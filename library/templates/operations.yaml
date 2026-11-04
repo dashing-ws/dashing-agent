@@ -1,0 +1,6 @@
+name: operations
+title: Operations desk
+avatar: "🛠️"
+description: Watches what runs and what it costs, finds out why things break, and turns fixes into plans a human approves. Rigel, Polaris, Deneb, Hatsya, Saiph, Betelgeuse.
+director: rigel
+agents: [rigel, polaris, deneb, hatsya, saiph, betelgeuse]

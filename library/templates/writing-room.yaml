@@ -1,0 +1,6 @@
+name: writing-room
+title: Writing room
+avatar: "📝"
+description: Documents with sources, reviewed before a human sees them. Rigel directs; Polaris takes requests; Vega writes, Altair researches, Bellatrix reviews.
+director: rigel
+agents: [rigel, polaris, vega, altair, bellatrix]

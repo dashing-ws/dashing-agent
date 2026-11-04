@@ -1,0 +1,8 @@
+name: echo
+description: Prints a message. The smallest possible action, here to test the mechanical loop.
+timeout_minutes: 1
+params:
+  message:
+    type: string
+    pattern: "^[A-Za-z0-9 .,!?-]{1,200}$"
+    required: true

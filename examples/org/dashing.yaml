@@ -1,0 +1,22 @@
+# An example organization: a director and one writer. Copy this folder into a GitHub repository to try dashing-agent.
+name: example
+director: director
+model: claude-opus-5-5
+github:
+  # project: 1   # "dashing-agent setup <folder>" fills this in
+paths:                      # where this repository keeps its files; these are the defaults
+  agents: agents
+  actions: actions
+  control: control
+lease:
+  director_minutes: 20
+  task_minutes: 30
+  renew_minutes: 5
+  plan_every_minutes: 10
+budgets:
+  max_turns: 40
+  max_budget_usd: 15        # the SDK's own estimate, a safety cap; on a subscription nothing is billed per run
+  timeout_minutes: 30
+loops:
+  agent_seconds: 60
+  mechanical_seconds: 120

@@ -1,0 +1,6 @@
+name: runtime-team
+title: Runtime team
+avatar: "⚙️"
+description: Keeps a fleet of services running, lean and accountable; twelve agents plus Polaris at the front desk. Rigel directs; a change group shrinks, onboards, fixes and sweeps; a production group watches and diagnoses; an assurance group reviews, records, curates and reports.
+director: rigel
+agents: [rigel, polaris, betelgeuse, nebula, alnitak, alnilam, mintaka, hatsya, saiph, bellatrix, tabit, meissa, sirius]
