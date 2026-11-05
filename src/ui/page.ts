@@ -424,7 +424,7 @@ function renderHeader(s, v) {
 
 // ---------- the gate ----------
 var GROUPS = [
-  { title: 'This laptop', ids: ['node', 'git', 'gh', 'claude'], note: 'Node, git, the GitHub CLI, Claude' },
+  { title: 'This laptop', ids: ['node', 'git', 'gh', 'gh-home', 'claude'], note: 'Node, git, the GitHub CLI, Claude' },
   { title: 'GitHub', ids: ['gh-auth', 'gh-scopes', 'remote-access'], note: 'signed in, token scopes, access' },
   { title: 'The organization', ids: ['folder', 'git-repo', 'remote', 'git-name', 'git-email', 'upstream', 'org', 'org-file', 'kill', 'project'], note: 'the folder, the files, the Project' },
   { title: 'Leases', ids: ['leases'], note: 'the namespace on origin' },

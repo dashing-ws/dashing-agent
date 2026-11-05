@@ -143,6 +143,8 @@ Cheapest first; each failure comes with a fix. The page shows a button per faile
 
 Signing in to GitHub and adding token scopes run the GitHub CLI's device flow: gh prints a one-time code, the page shows it large with a button that copies it and opens github.com/login/device, the person pastes it there, and gh keeps the token. When the fix ends, pre-flight runs again by itself; when every check passes, the page says so and the loops start.
 
+gh keeps its login under `~/.config/gh`. On a managed laptop that folder can belong to another user, and the sign-in ends with "permission denied". The tool checks this before its first gh call: when gh's folder cannot be written and `GH_CONFIG_DIR` is not set, it points gh at `~/.agentic-loop/gh` for every command it runs and shows a line in the checks with the export for the terminal. gh still stores the token; the tool stores nothing.
+
 The checks: Node 22, git, GitHub CLI 2.60+, signed in, token scopes `repo` and `project`, Claude Code on PATH (warning only), the folder is a git root, origin is on github.com, the user has write access (the owner may be any account or organization gh can reach), git name and email, a tracking branch, the organization files load, the kill switch, the Project exists with the Status and Agent options, and the lease namespace on origin is readable.
 
 ## Open points

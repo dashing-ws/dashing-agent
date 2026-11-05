@@ -3,6 +3,7 @@ import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { run, which } from '../util/exec.js';
 import { ghJson, ghLogin, ghScopes, parseRemote, type RepoRef } from '../github/gh.js';
+import { ensureGhConfigDir } from './gh-home.js';
 import { loadOrganization, isKillSwitchOn, findConfigFile, type Organization, CONFIG_FILE, OLD_CONFIG_FILE } from '../org/contract.js';
 import { TASK_STATUSES } from '../github/task-store.js';
 import type { CheckStatus } from '../state.js';
@@ -85,6 +86,7 @@ function versionTuple(s: string): number[] {
 export async function runPreflight(opts: PreflightOptions): Promise<PreflightReport> {
   const folder = opts.folder ? path.resolve(opts.folder) : '';
   const checks: CheckResult[] = [];
+  const ghHome = await ensureGhConfigDir();
   const report: PreflightReport = { ok: false, at: new Date().toISOString(), checks, orgProblems: [], killSwitch: false, needsOrganization: true };
 
   // 1. Node
@@ -138,6 +140,10 @@ export async function runPreflight(opts: PreflightOptions): Promise<PreflightRep
     );
   } else {
     checks.push(skip('gh-auth', 'GitHub login', opts.offline ? 'offline' : 'gh is missing'));
+  }
+
+  if (ghHome.moved) {
+    checks.push(pass('gh-home', 'GitHub CLI config folder', `${ghHome.dir}, because ${ghHome.reason} cannot be written; for the same login in your terminal: export GH_CONFIG_DIR=${ghHome.dir}`));
   }
 
   // 5. gh scopes

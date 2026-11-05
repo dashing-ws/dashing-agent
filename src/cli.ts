@@ -3,6 +3,7 @@ import os from 'node:os';
 import { spawn } from 'node:child_process';
 import { runPreflight, formatReport, applyFixes, placeholders, type PreflightReport } from './preflight/index.js';
 import { Fixer } from './preflight/fixer.js';
+import { ensureGhConfigDir } from './preflight/gh-home.js';
 import { describeAccess, hasAll } from './runner/access.js';
 import { expandHome } from './org/builder.js';
 import { CONFIG_FILE, findConfigFile } from './org/contract.js';
@@ -73,6 +74,7 @@ export function parseArgs(argv: string[]): Args {
 
 export async function main(argv: string[]): Promise<void> {
   const args = parseArgs(argv);
+  await ensureGhConfigDir();
   if (args.command === 'help' || (!args.folder && args.command !== 'run')) {
     console.log(HELP);
     process.exitCode = args.command === 'help' ? 0 : 2;
