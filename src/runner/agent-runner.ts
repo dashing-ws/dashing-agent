@@ -99,7 +99,8 @@ export async function runAgent(spec: RunSpec): Promise<RunOutcome> {
     watch.tool?.({ name, input: input.tool_input, ok, ...(ok ? {} : { reason: verdict.reason }), turns, toolCalls, denied });
     if (ok) {
       spec.log(`→ ${name}`);
-      return {};
+      // An explicit allow: the harness decided, the SDK's own permission layer does not get a second say.
+      return { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'allow', permissionDecisionReason: 'listed for this agent by the harness' } };
     }
     spec.log(`✗ ${name} (denied: ${verdict.reason})`);
     return {

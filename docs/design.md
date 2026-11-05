@@ -107,7 +107,7 @@ One run is one `query()` through the Claude Agent SDK:
 
 - the system prompt is the agent's file plus a fixed harness section (who it is, that it proposes and never executes, the handler catalog, the roster);
 - the prompt is the task and the instruction to end with a ledger tool;
-- `tools` is the agent's built-in list, `permissionMode` is `dontAsk`, `settingSources` is empty, and a `PreToolUse` hook denies every tool outside the allowance and writes each call to the audit file;
+- `tools` is the agent's built-in list, `permissionMode` is `dontAsk`, `settingSources` is empty, and a `PreToolUse` hook allows each call inside the allowance in so many words, denies every tool outside it, and writes each call to the audit file;
 - the ledger tools are served in-process as the MCP server `ledger`: `read_task`, `post_update`, `remove_file` (a delete inside the write folders; the built-in tools only create and edit), `propose_plan`, `finish` for a worker; `list_inbox`, `assign_task`, `reject_task` for the Director; the five board tools for the front desk;
 - limits come from `budgets`: turns, estimated cost, wall clock. The cost is the SDK's own estimate from a price table; on a Claude subscription nothing is billed per run, so it is a safety cap only. A three-turn smoke run was estimated at about $1.26, so keep the cap well above $2.
 
