@@ -1,3 +1,4 @@
+import { fileURLToPath } from 'node:url';
 import { describe, it, expect } from 'vitest';
 import { MemoryStore } from '../github/memory-store.js';
 import { loadOrganization } from '../org/contract.js';
@@ -5,7 +6,7 @@ import { chatTools } from './chat-tools.js';
 import type { Task } from '../github/task-store.js';
 
 async function setup(): Promise<{ store: MemoryStore; filed: Task[]; call: (name: string, args: Record<string, unknown>) => Promise<{ text: string; isError: boolean }> }> {
-  const { org } = await loadOrganization('/Users/eugene/git/dashing-agent/examples/org');
+  const { org } = await loadOrganization(fileURLToPath(new URL('../../examples/org', import.meta.url)));
   if (!org) throw new Error('example org does not load');
   const store = new MemoryStore();
   const filed: Task[] = [];

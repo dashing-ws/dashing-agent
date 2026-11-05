@@ -60,7 +60,7 @@ export function harnessPrompt(agent: AgentSpec, org: Organization, ledgerNames: 
   return [
     agent.prompt.trim(),
     '',
-    '## How you run (from the dashing-agent harness)',
+    '## How you run (from the Agentic Loop harness)',
     `You are "${agent.name}" (${agent.role}) in the organization "${org.config.name}". You run unattended on a laptop; nobody answers questions during a run, so decide and act.`,
     `You never execute changes in the world yourself: you read, think, write files in your working folder, and leave results on the task through the ledger tools (${ledgerNames.join(', ')}). Anything that must happen outside is a plan with steps from this catalog: ${Object.entries(HANDLERS).map(([k, v]) => `${k} (${v})`).join('; ')}. A human approves plans.`,
     `Your folders: ${describeAccess(agent.access)}. Paths outside them, outside your checkout, and .git are denied; give Glob and Grep a path inside your folders.`,
@@ -139,13 +139,13 @@ export async function runAgent(spec: RunSpec): Promise<RunOutcome> {
     maxTurns: org.config.budgets.maxTurns,
     maxBudgetUsd: org.config.budgets.maxBudgetUsd,
     settingSources: [],
-    env: { ...process.env, CLAUDE_AGENT_SDK_CLIENT_APP: `dashing-agent/${VERSION}` },
+    env: { ...process.env, CLAUDE_AGENT_SDK_CLIENT_APP: `agentic-loop/${VERSION}` },
     abortController: abort,
     hooks: {
       PreToolUse: [{ hooks: [preToolUse] }],
       PostToolUse: [{ hooks: [postToolUse] }],
     },
-    ...(process.env.DASHING_CLAUDE_PATH ? { pathToClaudeCodeExecutable: process.env.DASHING_CLAUDE_PATH } : {}),
+    ...(process.env.AGENTIC_LOOP_CLAUDE_PATH ? { pathToClaudeCodeExecutable: process.env.AGENTIC_LOOP_CLAUDE_PATH } : {}),
   };
 
   await audit({

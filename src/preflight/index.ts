@@ -3,7 +3,7 @@ import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { run, which } from '../util/exec.js';
 import { ghJson, ghLogin, ghScopes, parseRemote, type RepoRef } from '../github/gh.js';
-import { loadOrganization, isKillSwitchOn, type Organization, CONFIG_FILE } from '../org/contract.js';
+import { loadOrganization, isKillSwitchOn, findConfigFile, type Organization, CONFIG_FILE, OLD_CONFIG_FILE } from '../org/contract.js';
 import { TASK_STATUSES } from '../github/task-store.js';
 import type { CheckStatus } from '../state.js';
 
@@ -47,7 +47,7 @@ export interface PreflightReport {
   login?: string;
   project?: number;
   killSwitch: boolean;
-  /** No folder was given, or it has no dashing.yaml: the page offers to build an organization. */
+  /** No folder was given, or it has no agentic-loop.yaml: the page offers to build an organization. */
   needsOrganization: boolean;
 }
 
@@ -92,7 +92,7 @@ export async function runPreflight(opts: PreflightOptions): Promise<PreflightRep
   checks.push(
     nodeMajor >= MIN_NODE
       ? pass('node', 'Node.js', `v${process.versions.node}`)
-      : fail('node', 'Node.js', `v${process.versions.node}; dashing-agent needs ${MIN_NODE} or newer`, {
+      : fail('node', 'Node.js', `v${process.versions.node}; Agentic Loop needs ${MIN_NODE} or newer`, {
           description: `Install Node ${MIN_NODE}+ (for example with nvm)`,
           command: ['nvm', 'install', String(MIN_NODE)],
           terminal: true,
@@ -116,7 +116,7 @@ export async function runPreflight(opts: PreflightOptions): Promise<PreflightRep
     !ghOk
       ? fail('gh', 'GitHub CLI', 'gh is not installed', { description: 'Install the GitHub CLI', command: ['brew', 'install', 'gh'] })
       : !ghNew
-        ? fail('gh', 'GitHub CLI', `gh ${ghVer.join('.')}; dashing-agent needs ${MIN_GH.join('.')} or newer`, {
+        ? fail('gh', 'GitHub CLI', `gh ${ghVer.join('.')}; Agentic Loop needs ${MIN_GH.join('.')} or newer`, {
             description: 'Upgrade the GitHub CLI',
             command: ['brew', 'upgrade', 'gh'],
           })
@@ -189,15 +189,8 @@ export async function runPreflight(opts: PreflightOptions): Promise<PreflightRep
             command: ['gh', 'repo', 'clone', '<owner>/<repo>', folder],
           }),
   );
-  let hasConfig = false;
-  if (isDir) {
-    try {
-      await fs.access(path.join(folder, CONFIG_FILE));
-      hasConfig = true;
-    } catch {
-      hasConfig = false;
-    }
-  }
+  const configFile = isDir ? await findConfigFile(folder) : undefined;
+  const hasConfig = !!configFile;
   report.needsOrganization = !hasConfig;
 
   // 8. git repo
@@ -306,7 +299,7 @@ export async function runPreflight(opts: PreflightOptions): Promise<PreflightRep
       checks.push(pass('org', 'Organization files', `${load.org.config.name}: ${load.org.agents.length} agents (director ${load.org.director.name}), ${load.org.actions.length} actions`));
     } else {
       checks.push(fail('org', 'Organization files', load.problems.join('; '), hasConfig
-        ? { description: 'Add the missing starter files (agents/, control/) and edit them', command: ['dashing-agent', 'init', folder] }
+        ? { description: 'Add the missing starter files (agents/, control/) and edit them', command: ['agentic-loop', 'init', folder] }
         : { description: 'Build the organization under Organization on this page' }));
     }
     report.killSwitch = await isKillSwitchOn(folder, load.org?.config.paths.control);
@@ -319,6 +312,12 @@ export async function runPreflight(opts: PreflightOptions): Promise<PreflightRep
     } else {
       checks.push(pass('kill', 'Kill switch', 'off'));
     }
+    if (configFile === OLD_CONFIG_FILE) {
+      checks.push(warn('org-file', 'Organization file name', `${OLD_CONFIG_FILE} is the old name; this laptop still reads it`, {
+        description: `Rename it to ${CONFIG_FILE}, then commit and push`,
+        command: ['git', '-C', folder, 'mv', OLD_CONFIG_FILE, CONFIG_FILE],
+      }));
+    }
   } else {
     checks.push(skip('org', 'Organization files', 'no folder'));
     checks.push(skip('kill', 'Kill switch', 'no folder'));
@@ -328,9 +327,9 @@ export async function runPreflight(opts: PreflightOptions): Promise<PreflightRep
   if (report.org && report.repo && scopesOk && accessOk && !opts.offline) {
     const number = report.org.config.github.project;
     if (!number) {
-      checks.push(fail('project', 'GitHub Project', `${CONFIG_FILE} has no github.project number`, {
-        description: 'Create the Project with its fields and write the number into dashing.yaml',
-        command: ['dashing-agent', 'setup', folder],
+      checks.push(fail('project', 'GitHub Project', `${report.org.configFile} has no github.project number`, {
+        description: `Create the Project with its fields and write the number into ${report.org.configFile}`,
+        command: ['agentic-loop', 'setup', folder],
       }));
     } else {
       report.project = number;
@@ -353,14 +352,14 @@ export async function runPreflight(opts: PreflightOptions): Promise<PreflightRep
           problems.length
             ? fail('project', 'GitHub Project', `project #${number}: ${problems.join('; ')}`, {
                 description: 'Repair the Project fields',
-                command: ['dashing-agent', 'setup', folder],
+                command: ['agentic-loop', 'setup', folder],
               })
             : pass('project', 'GitHub Project', `project #${number} has Status and Agent fields`),
         );
       } catch (e) {
         checks.push(fail('project', 'GitHub Project', `project #${number}: ${(e as Error).message.split('\n')[0]}`, {
           description: 'Create or repair the Project',
-          command: ['dashing-agent', 'setup', folder],
+          command: ['agentic-loop', 'setup', folder],
         }));
       }
     }
@@ -370,7 +369,7 @@ export async function runPreflight(opts: PreflightOptions): Promise<PreflightRep
 
   // 15. lease namespace readable
   if (report.repo && repoOk && !opts.offline) {
-    const ls = await run('git', ['ls-remote', 'origin', 'refs/dashing/leases/*'], { cwd: folder, timeoutMs: 30_000 });
+    const ls = await run('git', ['ls-remote', 'origin', 'refs/agentic-loop/leases/*'], { cwd: folder, timeoutMs: 30_000 });
     const n = ls.stdout.trim() ? ls.stdout.trim().split('\n').length : 0;
     checks.push(
       ls.code === 0
@@ -400,7 +399,7 @@ export function formatReport(r: PreflightReport): string {
 
 /**
  * Runs each failed check's fix command in order, in the terminal. Stops at the first failure.
- * Fixes that are dashing-agent's own commands (`init`, `setup`) run in-process through `own`.
+ * Fixes that are the tool's own commands (`init`, `setup`) run in-process through `own`.
  */
 export async function applyFixes(r: PreflightReport, own: (args: string[]) => Promise<void>): Promise<boolean> {
   const todo = r.checks.filter((c) => c.status === 'fail' && c.fix?.command);
@@ -419,7 +418,7 @@ export async function applyFixes(r: PreflightReport, own: (args: string[]) => Pr
       return false;
     }
     console.log(`→ ${c.fix!.description}\n  $ ${cmd.join(' ')}`);
-    if (cmd[0] === 'dashing-agent') {
+    if (cmd[0] === 'agentic-loop') {
       try {
         await own(cmd.slice(1));
       } catch (e) {

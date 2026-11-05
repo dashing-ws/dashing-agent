@@ -1,11 +1,11 @@
 {
-  "name": "dashing-agent",
+  "name": "agentic-loop",
   "version": "0.1.0",
   "description": "Runs an organization of AI agents from a GitHub repository on your laptop: an agent loop and a mechanical loop, shared through GitHub.",
   "license": "MIT",
   "type": "module",
   "bin": {
-    "dashing-agent": "./bin/dashing-agent.js"
+    "agentic-loop": "./bin/agentic-loop.js"
   },
   "engines": {
     "node": ">=22"

@@ -63,7 +63,7 @@ describe('Fixer', () => {
     const fixer = new Fixer(st, async (args, log) => { seen.push(args); log('wrote 3 files'); }, async () => {});
     const terminal: CheckResult = { id: 'node', title: 'Node', status: 'fail', detail: 'x', fix: { description: 'nvm', command: ['nvm', 'install', '22'], terminal: true } };
     expect(fixer.start(terminal, {})).toMatch(/terminal/);
-    const own: CheckResult = { id: 'org', title: 'Org', status: 'fail', detail: 'x', fix: { description: 'init', command: ['dashing-agent', 'init', '/tmp/o'] } };
+    const own: CheckResult = { id: 'org', title: 'Org', status: 'fail', detail: 'x', fix: { description: 'init', command: ['agentic-loop', 'init', '/tmp/o'] } };
     expect(fixer.start(own, {})).toBeUndefined();
     await waitDone(st);
     expect(seen).toEqual([['init', '/tmp/o']]);

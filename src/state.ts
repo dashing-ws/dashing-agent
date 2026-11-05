@@ -21,7 +21,7 @@ export interface PreflightView {
   at: string;
   ok: boolean;
   checks: CheckView[];
-  /** No folder, or a folder without dashing.yaml: the page offers to build one. */
+  /** No folder, or a folder without agentic-loop.yaml: the page offers to build one. */
   needsOrganization: boolean;
 }
 
@@ -74,6 +74,9 @@ export interface AgentView {
 export interface OrgView {
   name: string;
   director: string;
+  /** One emoji, or for an image file the page's URL for it. */
+  logo?: string;
+  logoUrl?: string;
   agents: AgentView[];
   actions: string[];
   killSwitch: boolean;

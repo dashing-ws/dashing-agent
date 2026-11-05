@@ -31,7 +31,7 @@ export interface UiHandle {
 }
 
 /** Every POST must carry this header. A browser sends it only from this page, never cross-site. */
-const GUARD_HEADER = 'x-dashing';
+const GUARD_HEADER = 'x-agentic-loop';
 
 function readJson(req: http.IncomingMessage): Promise<Record<string, unknown>> {
   return new Promise((resolve) => {

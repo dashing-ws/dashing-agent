@@ -5,7 +5,7 @@ import { runPreflight, formatReport, applyFixes, placeholders, type PreflightRep
 import { Fixer } from './preflight/fixer.js';
 import { describeAccess, hasAll } from './runner/access.js';
 import { expandHome } from './org/builder.js';
-import { CONFIG_FILE } from './org/contract.js';
+import { CONFIG_FILE, findConfigFile } from './org/contract.js';
 import fs from 'node:fs/promises';
 import { StateStore, type NodeState } from './state.js';
 import { startUi } from './ui/server.js';
@@ -27,13 +27,13 @@ import { ghOwners, ghGraphqlResetMs, isRateLimit } from './github/gh.js';
 import { VERSION } from './runner/agent-runner.js';
 import { pathToFileURL } from 'node:url';
 
-const HELP = `dashing-agent ${VERSION}: run an organization of AI agents from a GitHub repository, on this laptop.
+const HELP = `Agentic Loop ${VERSION}: run an organization of AI agents from a GitHub repository, on this laptop.
 
 Usage
-  dashing-agent [<folder>] [--port 4848] [--no-open] [--fix] [--only a,b] run: pre-flight, UI, both loops; no folder: build one on the page
-  dashing-agent check <folder> [--fix]                                     run the pre-flight and exit
-  dashing-agent init <folder>                                              write the starter organization files
-  dashing-agent setup <folder>                                             create or repair the GitHub Project
+  agentic-loop [<folder>] [--port 4848] [--no-open] [--fix] [--only a,b] run: pre-flight, UI, both loops; no folder: build one on the page
+  agentic-loop check <folder> [--fix]                                     run the pre-flight and exit
+  agentic-loop init <folder>                                              write the starter organization files
+  agentic-loop setup <folder>                                             create or repair the GitHub Project
 
 The folder is a clone of the organization's GitHub repository. Pre-flight tells you what is missing and how to fix it;
 --fix runs the fixes in order in this terminal. --only limits the agents this laptop runs.`;
@@ -108,7 +108,7 @@ async function ownCommand(argv: string[], log: (text: string) => void): Promise<
   const folder = path.resolve(folderArg);
   if (command === 'init') {
     const written = await initOrganization(folder);
-    log(written.length ? `Wrote:\n  ${written.join('\n  ')}\nEdit them, commit, push, then run: dashing-agent setup ${folder}` : 'Every starter file already exists; nothing written.');
+    log(written.length ? `Wrote:\n  ${written.join('\n  ')}\nEdit them, commit, push, then run: agentic-loop setup ${folder}` : 'Every starter file already exists; nothing written.');
     return;
   }
   if (command === 'setup') {
@@ -151,7 +151,7 @@ async function runNode(initialFolder: string, args: Args, first: PreflightReport
     log: [],
   };
   const state = new StateStore(initial);
-  const auditDir = path.join(os.homedir(), '.dashing-agent', 'audit');
+  const auditDir = path.join(os.homedir(), '.agentic-loop', 'audit');
   let lastReport: PreflightReport = first;
 
   let ownersFor = '';
@@ -198,7 +198,7 @@ async function runNode(initialFolder: string, args: Args, first: PreflightReport
     if (started || !r.ok || !r.org || !r.repo || !r.project) return;
     started = true;
     const org = r.org;
-    const workRoot = path.join(os.homedir(), '.dashing-agent', 'work', path.basename(folder));
+    const workRoot = path.join(os.homedir(), '.agentic-loop', 'work', path.basename(folder));
     const ghStore = new GitHubProjectStore({ owner: r.repo.owner, repo: r.repo.name, project: r.project, cwd: folder });
     store = ghStore;
     const lease = new GitRefLease(folder);
@@ -252,14 +252,10 @@ async function runNode(initialFolder: string, args: Args, first: PreflightReport
     },
     cancelFix: () => fixer.cancel(),
     useFolder: async (given) => {
-      if (started) return 'this node already runs an organization; start another dashing-agent for a second one';
+      if (started) return 'this node already runs an organization; start another agentic-loop for a second one';
       if (!given) return 'say which folder';
       const abs = path.resolve(expandHome(given));
-      try {
-        await fs.access(path.join(abs, CONFIG_FILE));
-      } catch {
-        return `${abs} has no ${CONFIG_FILE}; build a new organization there instead, or clone one first`;
-      }
+      if (!(await findConfigFile(abs))) return `${abs} has no ${CONFIG_FILE}; build a new organization there instead, or clone one first`;
       folder = abs;
       state.update((s) => {
         s.node.folder = folder;
@@ -273,7 +269,7 @@ async function runNode(initialFolder: string, args: Args, first: PreflightReport
     orgFile: (rel) => {
       const org = lastReport.org;
       if (!org || !folder) return undefined;
-      const allowed = org.agents.some((a) => isAvatarFile(a.avatar) && a.avatar === rel);
+      const allowed = org.agents.some((a) => isAvatarFile(a.avatar) && a.avatar === rel) || (isAvatarFile(org.config.logo) && org.config.logo === rel);
       if (!allowed) return undefined;
       const abs = path.resolve(folder, rel);
       return abs.startsWith(folder + path.sep) ? abs : undefined;
@@ -327,6 +323,7 @@ function orgView(org: Organization, killSwitch: boolean): NodeState['org'] {
   return {
     name: org.config.name,
     director: org.director.name,
+    ...(org.config.logo ? (isAvatarFile(org.config.logo) ? { logoUrl: `/org/${org.config.logo}` } : { logo: org.config.logo }) : {}),
     agents: org.agents.map((a) => ({
       name: a.name, role: a.role, description: a.description, model: a.model ?? org.config.model, tools: a.tools, access: describeAccess(a.access), writes: writes(a), file: a.file,
       ...(a.avatar ? (isAvatarFile(a.avatar) ? { avatarUrl: `/org/${a.avatar}` } : { avatar: a.avatar }) : {}),
@@ -338,7 +335,7 @@ function orgView(org: Organization, killSwitch: boolean): NodeState['org'] {
   };
 }
 
-// Run when started as the script itself (npm run dev, tsx src/cli.ts); bin/dashing-agent.js imports main instead.
+// Run when started as the script itself (npm run dev, tsx src/cli.ts); bin/agentic-loop.js imports main instead.
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   main(process.argv.slice(2)).catch((err: unknown) => {
     console.error(err instanceof Error ? err.stack ?? err.message : String(err));

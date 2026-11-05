@@ -24,8 +24,8 @@ describe('plan', () => {
   it('accepts a valid plan', () => {
     const plan: Plan = { summary: '', at: '', proposedBy: '', steps: [
       { handler: 'run_script', args: { script: 'echo', params: { message: 'hello there', times: 2 } } },
-      { handler: 'merge_pr', args: { repo: 'dashing-ws/x', pr: 12 } },
-      { handler: 'comment', args: { repo: 'dashing-ws/x', number: 3, body: 'done' } },
+      { handler: 'merge_pr', args: { repo: 'example/x', pr: 12 } },
+      { handler: 'comment', args: { repo: 'example/x', number: 3, body: 'done' } },
     ] };
     expect(validatePlan(plan, org)).toEqual([]);
   });

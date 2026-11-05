@@ -39,12 +39,12 @@ async function runScript(args: Record<string, unknown>, ctx: HandlerContext): Pr
   const params = (args.params && typeof args.params === 'object' ? args.params : {}) as Record<string, unknown>;
   const env: NodeJS.ProcessEnv = {
     ...process.env,
-    DASHING_TASK: String(ctx.taskNumber),
-    DASHING_NODE: ctx.node,
-    DASHING_ORG: ctx.org.config.name,
-    DASHING_ORG_DIR: ctx.org.dir,
+    AGENTIC_LOOP_TASK: String(ctx.taskNumber),
+    AGENTIC_LOOP_NODE: ctx.node,
+    AGENTIC_LOOP_ORG: ctx.org.config.name,
+    AGENTIC_LOOP_ORG_DIR: ctx.org.dir,
   };
-  for (const [k, v] of Object.entries(params)) env[`DASHING_PARAM_${k.toUpperCase().replace(/[^A-Z0-9]/g, '_')}`] = String(v);
+  for (const [k, v] of Object.entries(params)) env[`AGENTIC_LOOP_PARAM_${k.toUpperCase().replace(/[^A-Z0-9]/g, '_')}`] = String(v);
   ctx.log(`run_script ${manifest.name} ${JSON.stringify(params)}`);
   const r = await run('bash', [path.join(manifest.dir, 'run.sh')], { cwd: manifest.dir, env, timeoutMs: manifest.timeoutMinutes * 60_000 });
   const output = clip([r.stdout.trim(), r.stderr.trim()].filter(Boolean).join('\n--- stderr ---\n'));

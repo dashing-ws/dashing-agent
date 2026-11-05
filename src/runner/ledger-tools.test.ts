@@ -1,3 +1,4 @@
+import { fileURLToPath } from 'node:url';
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import fs from 'node:fs/promises';
 import os from 'node:os';
@@ -10,12 +11,12 @@ let dir: string;
 let org: Organization;
 
 beforeEach(async () => {
-  dir = await fs.mkdtemp(path.join(os.tmpdir(), 'dashing-ledger-'));
+  dir = await fs.mkdtemp(path.join(os.tmpdir(), 'agentic-loop-ledger-'));
   await fs.mkdir(path.join(dir, 'notes'), { recursive: true });
   await fs.mkdir(path.join(dir, 'secret'), { recursive: true });
   await fs.writeFile(path.join(dir, 'notes', 'a.md'), 'a');
   await fs.writeFile(path.join(dir, 'secret', 'b.md'), 'b');
-  const load = await loadOrganization('/Users/eugene/git/dashing-agent/examples/org');
+  const load = await loadOrganization(fileURLToPath(new URL('../../examples/org', import.meta.url)));
   if (!load.org) throw new Error('example org does not load');
   org = load.org;
 });

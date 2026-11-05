@@ -6,8 +6,8 @@ import { writeProjectNumber } from './setup.js';
 import { parseConfig } from './org/contract.js';
 
 async function roundTrip(text: string, number: number): Promise<string> {
-  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'dashing-yaml-'));
-  const file = path.join(dir, 'dashing.yaml');
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'agentic-loop-yaml-'));
+  const file = path.join(dir, 'agentic-loop.yaml');
   await fs.writeFile(file, text);
   await writeProjectNumber(file, number);
   const out = await fs.readFile(file, 'utf8');

@@ -31,7 +31,7 @@ export class GitRefLease {
   constructor(
     private readonly repoDir: string,
     private readonly remote = 'origin',
-    private readonly namespace = 'refs/dashing/leases',
+    private readonly namespace = 'refs/agentic-loop/leases',
   ) {}
 
   ref(name: string): string {
@@ -150,9 +150,9 @@ export function isExpired(lease: Lease, now = Date.now()): boolean {
 function commitEnv(): NodeJS.ProcessEnv {
   return {
     ...process.env,
-    GIT_AUTHOR_NAME: process.env.GIT_AUTHOR_NAME ?? 'dashing-agent',
-    GIT_AUTHOR_EMAIL: process.env.GIT_AUTHOR_EMAIL ?? 'dashing-agent@localhost',
-    GIT_COMMITTER_NAME: process.env.GIT_COMMITTER_NAME ?? 'dashing-agent',
-    GIT_COMMITTER_EMAIL: process.env.GIT_COMMITTER_EMAIL ?? 'dashing-agent@localhost',
+    GIT_AUTHOR_NAME: process.env.GIT_AUTHOR_NAME ?? 'agentic-loop',
+    GIT_AUTHOR_EMAIL: process.env.GIT_AUTHOR_EMAIL ?? 'agentic-loop@localhost',
+    GIT_COMMITTER_NAME: process.env.GIT_COMMITTER_NAME ?? 'agentic-loop',
+    GIT_COMMITTER_EMAIL: process.env.GIT_COMMITTER_EMAIL ?? 'agentic-loop@localhost',
   };
 }

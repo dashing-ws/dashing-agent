@@ -4,7 +4,7 @@ import { run, ok } from '../util/exec.js';
 
 /**
  * Where an agent works: a git worktree of the organization's clone on a branch of its own,
- * `dashing/task-<n>`. The agent reads and edits files there. When the run ends the harness,
+ * `agentic-loop/task-<n>`. The agent reads and edits files there. When the run ends the harness,
  * never the agent, commits what changed, pushes the branch and opens a pull request on the
  * task. The default branch is never pushed to from a run.
  */
@@ -32,7 +32,7 @@ export interface CloseResult {
   error?: string;
 }
 
-const BRANCH_PREFIX = 'dashing/task-';
+const BRANCH_PREFIX = 'agentic-loop/task-';
 
 export function branchFor(task: number): string {
   return `${BRANCH_PREFIX}${task}`;
@@ -73,7 +73,7 @@ export async function closeWorkspace(orgDir: string, ws: Workspace, opts: CloseO
     const staged = await run('git', ['diff', '--cached', '--quiet'], { cwd: ws.dir });
     result.changed = staged.code !== 0;
     if (result.changed) {
-      const message = `task #${ws.task}: ${opts.title}\n\nBy ${opts.agent} on ${opts.holder} through dashing-agent.`;
+      const message = `task #${ws.task}: ${opts.title}\n\nBy ${opts.agent} on ${opts.holder} through Agentic Loop.`;
       await ok('git', ['commit', '-q', '-m', message], { cwd: ws.dir });
       result.commit = (await ok('git', ['rev-parse', '--short', 'HEAD'], { cwd: ws.dir })).trim();
     }
@@ -91,7 +91,7 @@ export async function closeWorkspace(orgDir: string, ws: Workspace, opts: CloseO
       if (found) {
         result.prUrl = found.url;
       } else {
-        const body = `Closes #${ws.task}.\n\nOpened by dashing-agent for ${opts.agent} on ${opts.holder}. Review the diff on the task before merging.`;
+        const body = `Closes #${ws.task}.\n\nOpened by Agentic Loop for ${opts.agent} on ${opts.holder}. Review the diff on the task before merging.`;
         const created = await run('gh', ['pr', 'create', '--head', ws.branch, '--base', ws.base, '--title', `task #${ws.task}: ${opts.title}`.slice(0, 200), '--body', body], { cwd: ws.dir, timeoutMs: 60_000 });
         if (created.code === 0) result.prUrl = created.stdout.trim().split('\n').pop();
         else result.error = `pull request: ${created.stderr.trim().split('\n')[0]}`;

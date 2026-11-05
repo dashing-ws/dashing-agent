@@ -10,7 +10,7 @@ let a: GitRefLease;
 let b: GitRefLease;
 
 beforeAll(async () => {
-  root = await fs.mkdtemp(path.join(os.tmpdir(), 'dashing-lease-'));
+  root = await fs.mkdtemp(path.join(os.tmpdir(), 'agentic-loop-lease-'));
   const origin = path.join(root, 'origin.git');
   await ok('git', ['init', '-q', '--bare', origin]);
   await ok('git', ['clone', '-q', origin, path.join(root, 'a')]);

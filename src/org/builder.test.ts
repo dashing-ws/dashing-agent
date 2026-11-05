@@ -10,7 +10,7 @@ import { loadOrganization } from './contract.js';
 let root: string;
 
 beforeAll(async () => {
-  root = await fs.mkdtemp(path.join(os.tmpdir(), 'dashing-build-'));
+  root = await fs.mkdtemp(path.join(os.tmpdir(), 'agentic-loop-build-'));
 });
 
 afterAll(async () => {
@@ -99,7 +99,7 @@ describe('templates and copying agents from another organization', () => {
     const source = path.join(root, 'source-org');
     await fs.mkdir(path.join(source, 'team'), { recursive: true });
     await fs.mkdir(path.join(source, 'avatars'), { recursive: true });
-    await fs.writeFile(path.join(source, 'dashing.yaml'), 'name: source\ndirector: kappa\npaths:\n  agents: team\n');
+    await fs.writeFile(path.join(source, 'agentic-loop.yaml'), 'name: source\ndirector: kappa\npaths:\n  agents: team\n');
     await fs.writeFile(path.join(source, 'team', 'kappa.md'), '---\nname: kappa\nrole: Writer\navatar: avatars/kappa.png\ntools: [Read, Write]\naccess:\n  write: [docs]\n---\nYou are Kappa, a writer.\n');
     await fs.writeFile(path.join(source, 'team', 'lambda.md'), '---\nname: lambda\nrole: Writer\navatar: "⭐"\ntools: [Read]\n---\nYou are Lambda, another writer.\n');
     await fs.writeFile(path.join(source, 'avatars', 'kappa.png'), Buffer.from([0x89, 0x50, 0x4e, 0x47]));

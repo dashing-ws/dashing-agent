@@ -1,9 +1,10 @@
-# An example organization: a director and one writer. Copy this folder into a GitHub repository to try dashing-agent.
+# An example organization: a director and one writer. Copy this folder into a GitHub repository to try Agentic Loop.
 name: example
+# logo: avatars/logo.png   # one emoji or an image file in this repository; the page shows it in the header
 director: director
 model: claude-opus-5-5
 github:
-  # project: 1   # "dashing-agent setup <folder>" fills this in
+  # project: 1   # "agentic-loop setup <folder>" fills this in
 paths:                      # where this repository keeps its files; these are the defaults
   agents: agents
   actions: actions

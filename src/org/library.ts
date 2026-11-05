@@ -5,7 +5,7 @@ import YAML from 'yaml';
 import { isAvatarFile, parseAgentText, parseFrontMatter, type AgentSpec } from './contract.js';
 
 /**
- * The agent library: ready agents that ship with dashing-agent, one Markdown file each under
+ * The agent library: ready agents that ship with Agentic Loop, one Markdown file each under
  * `library/agents/`, in the same format as an organization's own agent files. Starting an
  * organization copies the chosen files into it; from then on the organization owns them.
  */

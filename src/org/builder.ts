@@ -4,7 +4,7 @@ import path from 'node:path';
 import { run } from '../util/exec.js';
 import { loadLibrary, loadTemplates, type LibraryAgent } from './library.js';
 import { initOrganization, setupProject } from '../setup.js';
-import { CONFIG_FILE, isAvatarFile, parseAgentText, parseConfig } from './contract.js';
+import { CONFIG_FILE, findConfigFile, isAvatarFile, parseAgentText, parseConfig } from './contract.js';
 
 /**
  * Builds a new organization from the page: a folder, the chosen agents from the library, a git
@@ -49,14 +49,14 @@ interface Imported {
 
 /**
  * Reads the agents of another organization: a folder on this laptop or owner/name on GitHub
- * (cloned shallow into a temporary folder). With a dashing.yaml the organization's own agents path
+ * (cloned shallow into a temporary folder). With a agentic-loop.yaml the organization's own agents path
  * is honored; without one, agents/ is read. Avatar image files come along.
  */
 export async function importAgents(source: string, log: (line: string) => void): Promise<Imported[]> {
   let dir: string;
   let cleanup: string | undefined;
   if (REPO_RE.test(source) && !source.startsWith('.') && !source.includes('~')) {
-    cleanup = await fs.mkdtemp(path.join(os.tmpdir(), 'dashing-from-'));
+    cleanup = await fs.mkdtemp(path.join(os.tmpdir(), 'agentic-loop-from-'));
     dir = path.join(cleanup, 'repo');
     const clone = await run('gh', ['repo', 'clone', source, dir, '--', '--depth', '1', '-q'], { timeoutMs: 120_000 });
     if (clone.code !== 0) throw new Error(`cannot clone ${source}: ${firstLine(clone.stderr)}`);
@@ -66,11 +66,10 @@ export async function importAgents(source: string, log: (line: string) => void):
   }
   try {
     let agentsRel = 'agents';
-    try {
-      const cfg = parseConfig(await fs.readFile(path.join(dir, CONFIG_FILE), 'utf8'), []);
+    const configFile = await findConfigFile(dir);
+    if (configFile) {
+      const cfg = parseConfig(await fs.readFile(path.join(dir, configFile), 'utf8'), [], configFile);
       if (cfg) agentsRel = cfg.paths.agents;
-    } catch {
-      // no dashing.yaml: a plain folder with agents/
     }
     const agentsDir = path.join(dir, agentsRel);
     let files: string[];
@@ -124,12 +123,8 @@ export async function buildOrganization(input: BuildInput, log: (line: string) =
   if (missing.length) throw new Error(`not in the library: ${missing.join(', ')}`);
   if (!agents.some((a) => a.name === director)) throw new Error(`the director ${director} is not among the chosen agents`);
 
-  try {
-    await fs.access(path.join(folder, CONFIG_FILE));
-    throw new Error(`${folder} already holds an organization (${CONFIG_FILE} exists)`);
-  } catch (e) {
-    if ((e as NodeJS.ErrnoException).code !== 'ENOENT') throw e;
-  }
+  const existing = await findConfigFile(folder);
+  if (existing) throw new Error(`${folder} already holds an organization (${existing} exists)`);
   await fs.mkdir(folder, { recursive: true });
   log(`folder ${folder}`);
   const written = await initOrganization(folder, { name, director, agents });

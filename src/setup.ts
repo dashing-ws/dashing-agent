@@ -3,7 +3,7 @@ import path from 'node:path';
 import YAML from 'yaml';
 import { gh, ghJson, parseRemote } from './github/gh.js';
 import { run } from './util/exec.js';
-import { loadOrganization, CONFIG_FILE } from './org/contract.js';
+import { loadOrganization, findConfigFile, CONFIG_FILE } from './org/contract.js';
 import { loadLibrary, type LibraryAgent } from './org/library.js';
 import { TASK_STATUSES, STATUS_MEANING } from './github/task-store.js';
 
@@ -14,7 +14,7 @@ export interface OrgChoice {
   agents?: LibraryAgent[];
 }
 
-/** `dashing-agent init <folder>` and the page's builder: writes the starter organization files that are missing. */
+/** `agentic-loop init <folder>` and the page's builder: writes the starter organization files that are missing. */
 export async function initOrganization(folder: string, choice: OrgChoice = {}): Promise<string[]> {
   const written: string[] = [];
   const put = async (rel: string, content: string, mode?: number): Promise<void> => {
@@ -32,12 +32,13 @@ export async function initOrganization(folder: string, choice: OrgChoice = {}): 
   const library = choice.agents ? [] : await loadLibrary();
   const director = choice.director ?? library.find((a) => a.required)?.name ?? 'director';
   const agents = choice.agents ?? library.filter((a) => a.required || a.name === 'vega');
-  await put(CONFIG_FILE, `# The organization dashing-agent runs. See docs/design.md in the dashing-agent repository.
+  await put((await findConfigFile(folder)) ?? CONFIG_FILE, `# The organization Agentic Loop runs. See docs/design.md in the Agentic Loop repository.
 name: ${name}
+# logo: avatars/logo.png   # one emoji or an image file in this repository; the page shows it in the header
 director: ${director}          # the agent that reads the inbox and assigns work
 model: claude-opus-5-5      # default model for every agent; an agent may pin its own
 github:
-  # project: 1              # the GitHub Project number; "dashing-agent setup <folder>" fills it in
+  # project: 1              # the GitHub Project number; "agentic-loop setup <folder>" fills it in
 paths:                      # where this repository keeps its files; these are the defaults
   agents: agents
   actions: actions
@@ -70,7 +71,7 @@ loops:
   }
   await put('README.md', `# ${name}
 
-An organization of AI agents, run by [dashing-agent](https://github.com/strokine/dashing-agent). The agents are the files under agents/; the actions the mechanical loop may run are under actions/; control/kill stops every laptop. Tasks are issues on this repository's Project.
+An organization of AI agents, run by [Agentic Loop](https://github.com/dashing-ws/dashing-agent). The agents are the files under agents/; the actions the mechanical loop may run are under actions/; control/kill stops every laptop. Tasks are issues on this repository's Project.
 `);
   await put('actions/echo/manifest.yaml', `name: echo
 description: Prints a message. The smallest possible action, here to test the mechanical loop.
@@ -83,12 +84,12 @@ params:
 `);
   await put('actions/echo/run.sh', `#!/usr/bin/env bash
 set -euo pipefail
-echo "task #$DASHING_TASK on $DASHING_NODE says: $DASHING_PARAM_MESSAGE"
+echo "task #$AGENTIC_LOOP_TASK on $AGENTIC_LOOP_NODE says: $AGENTIC_LOOP_PARAM_MESSAGE"
 `, 0o755);
   await put('control/.gitkeep', '');
-  await put('.github/workflows/dashing-leases.yml', `# Deletes expired lease refs so the board tells the truth. Correctness never depends on this:
+  await put('.github/workflows/agentic-loop-leases.yml', `# Deletes expired lease refs so the board tells the truth. Correctness never depends on this:
 # an expired lease is claimable with or without it.
-name: dashing-agent leases
+name: Agentic Loop leases
 on:
   schedule:
     - cron: "*/15 * * * *"
@@ -103,7 +104,7 @@ jobs:
       - name: Delete expired leases
         run: |
           now=$(date -u +%s)
-          git ls-remote origin 'refs/dashing/leases/*' | while read -r sha ref; do
+          git ls-remote origin 'refs/agentic-loop/leases/*' | while read -r sha ref; do
             git fetch -q origin "$ref"
             until=$(git log -1 --format=%B "$sha" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{console.log(Math.floor(Date.parse(JSON.parse(s).until)/1000))}catch{console.log(0)}})')
             if [ "$until" -lt "$now" ]; then
@@ -123,9 +124,9 @@ interface FieldJson {
 }
 
 /**
- * `dashing-agent setup <folder>`: creates the GitHub Project for the organization (or repairs it),
+ * `agentic-loop setup <folder>`: creates the GitHub Project for the organization (or repairs it),
  * gives Status the statuses both loops use and Agent one option per agent, and writes the
- * project number into dashing.yaml.
+ * project number into agentic-loop.yaml.
  */
 export async function setupProject(folder: string, log: (t: string) => void): Promise<void> {
   const dir = path.resolve(folder);
@@ -195,12 +196,12 @@ export async function setupProject(folder: string, log: (t: string) => void): Pr
   }
 
   if (org.config.github.project !== number) {
-    await writeProjectNumber(path.join(dir, CONFIG_FILE), number);
-    log(`wrote github.project: ${number} into ${CONFIG_FILE}; commit and push it so every laptop sees it`);
+    await writeProjectNumber(path.join(dir, org.configFile), number);
+    log(`wrote github.project: ${number} into ${org.configFile}; commit and push it so every laptop sees it`);
   }
 }
 
-/** Writes `github.project` into dashing.yaml, keeping the rest of the file and its comments. */
+/** Writes `github.project` into agentic-loop.yaml, keeping the rest of the file and its comments. */
 export async function writeProjectNumber(file: string, number: number): Promise<void> {
   const doc = YAML.parseDocument(await fs.readFile(file, 'utf8'));
   const github = doc.get('github');

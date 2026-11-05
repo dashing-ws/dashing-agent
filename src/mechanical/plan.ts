@@ -27,7 +27,7 @@ export interface Plan {
   at: string;
 }
 
-export const PLAN_MARKER = '<!-- dashing:plan -->';
+export const PLAN_MARKER = '<!-- agentic-loop:plan -->';
 
 export function renderPlanComment(plan: Plan): string {
   const lines = plan.steps.map((s, i) => `${i + 1}. \`${s.handler}\` ${JSON.stringify(s.args)}`);

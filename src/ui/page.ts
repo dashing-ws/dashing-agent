@@ -9,7 +9,7 @@ export const PAGE = String.raw`<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>dashing-agent</title>
+<title>Agentic Loop</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -46,9 +46,9 @@ body[data-view="dash"] #gate{display:none}
 
 /* header strip: never scrolls */
 .top{flex:none;display:flex;align-items:center;gap:18px;padding:10px 22px;border-bottom:1px solid var(--line);background:var(--surface);flex-wrap:wrap}
-.brand{display:flex;align-items:center;gap:9px;font:300 18px/1 var(--font-display)}
-.brand svg{width:24px;height:24px}
-.org{min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.org{display:flex;align-items:center;gap:10px;min-width:0}
+.org .logo{width:28px;height:28px;border-radius:7px;object-fit:cover;flex:none;display:inline-grid;place-items:center;font-size:20px;line-height:1}
+.org .t{min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .org b{font:600 15px/1.2 var(--font-display)}
 .org .meta{color:var(--ink-2);font-size:12px;margin-left:8px}
 .pills{display:flex;gap:8px;flex-wrap:wrap;margin-left:auto;align-items:center;flex:none}
@@ -239,8 +239,11 @@ h3.band:first-child{margin-top:0}
 .desk .body>:first-child{margin-top:auto}
 .msg{padding:8px 11px;border-radius:10px;max-width:92%;font-size:13.5px;white-space:pre-wrap}
 .msg.you{align-self:flex-end;background:color-mix(in oklab,var(--accent) 22%,var(--surface-2))}
-.msg.desk{align-self:flex-start;background:var(--surface-2);display:grid;grid-template-columns:24px 1fr;gap:8px}
-.msg.desk .av{--av:24px;font-size:13px;box-shadow:none;margin-top:2px}
+.msg.desk{align-self:flex-start;background:var(--surface-2);display:grid;grid-template-columns:var(--av) 1fr;gap:10px;max-width:96%}
+.msg.desk .av{box-shadow:0 0 0 2px var(--c);margin-top:1px}
+.msg.desk .head{display:flex;gap:8px;align-items:baseline;margin-bottom:3px}
+.msg.desk .head b{font:600 13.5px/1.2 var(--font-display);color:var(--ink)}
+.msg.desk .head .role{color:var(--c);font-size:12px;letter-spacing:.02em}
 .msg.note{align-self:center;color:var(--ink-3);font-size:12px;background:none}
 .msg .meta{font-size:11px;color:var(--ink-3);margin-top:4px}
 .chatbox{flex:none;display:flex;gap:6px;padding:10px 14px 14px;border-top:1px solid var(--line)}
@@ -260,7 +263,6 @@ h3.band:first-child{margin-top:0}
 </head>
 <body data-view="gate">
 <header class="top">
-  <div class="brand"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9.5" fill="none" style="stroke:var(--ink)" stroke-width="1.6"/><path d="M7 12h10" style="stroke:var(--accent)" stroke-width="2.4" stroke-linecap="round"/><circle cx="17" cy="12" r="1.8" style="fill:var(--accent)"/></svg><span>dashing-agent</span></div>
   <div class="org" id="org"></div>
   <div class="pills" id="pills"></div>
 </header>
@@ -310,7 +312,7 @@ var ago = function (iso) {
 };
 var cap = function (s) { s = String(s || ''); return s.charAt(0).toUpperCase() + s.slice(1); };
 var plural = function (n, one, many) { return n + ' ' + (n === 1 ? one : (many || one + 's')); };
-function post(url, body) { return fetch(url, { method: 'POST', headers: { 'x-dashing': '1', 'content-type': 'application/json' }, body: JSON.stringify(body || {}) }); }
+function post(url, body) { return fetch(url, { method: 'POST', headers: { 'x-agentic-loop': '1', 'content-type': 'application/json' }, body: JSON.stringify(body || {}) }); }
 function postJson(url, body) { return post(url, body).then(function (r) { return r.json().catch(function () { return {}; }); }); }
 var htmlCache = {};
 function setHtml(el, html) { if (!el) return; if (htmlCache[el.id] === html) return; htmlCache[el.id] = html; el.innerHTML = html; }
@@ -343,6 +345,15 @@ function avatar(a, cls) {
 }
 function glyph(who) { return '<span class="av glyph">' + (LOOPS[who] || '·') + '</span>'; }
 function isDesk(a) { return !!a && (a.role.trim().toLowerCase() === 'front desk' || a.name === 'front-desk'); }
+// The front desk that answers the chat: the organization's own, else the library's.
+function deskOf(s) {
+  var own = s.org ? s.org.agents.find(isDesk) : null;
+  if (own) return own;
+  var i = (s.library || []).findIndex(isDesk);
+  if (i < 0) return null;
+  var a = s.library[i];
+  return { name: a.name, role: a.role, avatar: a.avatar, avatarUrl: a.avatarUrl, c: libColor(a, i) };
+}
 function taskLink(s, n) {
   var t = (s.tasks || []).find(function (x) { return x.number === n; });
   return t ? '<a href="' + esc(t.url) + '" target="_blank">#' + n + '</a>' : '#' + n;
@@ -383,7 +394,9 @@ function renderHeader(s, v) {
   var meta = [esc(n.id), esc(n.folder || 'no organization folder yet')];
   if (s.repo) meta.push('<a href="' + esc(s.repo.url) + '" target="_blank">' + esc(s.repo.owner + '/' + s.repo.name) + '</a>');
   if (s.repo && s.repo.project) meta.push('<a href="' + esc(s.repo.url.replace(/\/[^/]+$/, '')) + '/projects/' + s.repo.project + '" target="_blank">project #' + s.repo.project + '</a>');
-  setHtml($('org'), '<b>' + esc(s.org ? s.org.name : 'no organization yet') + '</b><span class="meta">' + meta.join(' · ') + '</span>');
+  var logo = s.org && s.org.logoUrl ? '<img class="logo" src="' + esc(s.org.logoUrl) + '" alt="">' : s.org && s.org.logo ? '<span class="logo">' + esc(s.org.logo) + '</span>' : '';
+  setHtml($('org'), logo + '<span class="t"><b>' + esc(s.org ? s.org.name : 'no organization yet') + '</b><span class="meta">' + meta.join(' · ') + '</span></span>');
+  document.title = s.org ? s.org.name + ' · Agentic Loop' : 'Agentic Loop';
   var p = s.preflight;
   var pills = [];
   if (!p) pills.push('<span class="pill"><span class="dot"></span>checking…</span>');
@@ -413,7 +426,7 @@ function renderHeader(s, v) {
 var GROUPS = [
   { title: 'This laptop', ids: ['node', 'git', 'gh', 'claude'], note: 'Node, git, the GitHub CLI, Claude' },
   { title: 'GitHub', ids: ['gh-auth', 'gh-scopes', 'remote-access'], note: 'signed in, token scopes, access' },
-  { title: 'The organization', ids: ['folder', 'git-repo', 'remote', 'git-name', 'git-email', 'upstream', 'org', 'kill', 'project'], note: 'the folder, the files, the Project' },
+  { title: 'The organization', ids: ['folder', 'git-repo', 'remote', 'git-name', 'git-email', 'upstream', 'org', 'org-file', 'kill', 'project'], note: 'the folder, the files, the Project' },
   { title: 'Leases', ids: ['leases'], note: 'the namespace on origin' },
 ];
 function tileState(checks, ids) {
@@ -474,7 +487,7 @@ function renderGate(s) {
     } else {
       h += '<section class="panel"><h2>1 · Sign in to GitHub <span class="sub">done</span></h2><p>' + esc(auth ? auth.detail : 'signed in') + '.</p></section>';
     }
-    if (p.needsOrganization) h += '<section class="panel" id="orgPanel"><h2>2 · The organization <span class="sub">' + (authFails ? 'opens when step 1 is done' : 'pick a folder or build one') + '</span></h2><p>An organization is a GitHub repository with <code>dashing.yaml</code> at its root, the agents and actions in folders it names. Point the page at one you have, or build one here.</p><div id="builder"></div></section>';
+    if (p.needsOrganization) h += '<section class="panel" id="orgPanel"><h2>2 · The organization <span class="sub">' + (authFails ? 'opens when step 1 is done' : 'pick a folder or build one') + '</span></h2><p>An organization is a GitHub repository with <code>agentic-loop.yaml</code> at its root, the agents and actions in folders it names. Point the page at one you have, or build one here.</p><div id="builder"></div></section>';
     h += '<div class="bar-actions"><span>The checks, cheapest first.</span><button data-act="recheck">re-check now</button></div>';
   } else {
     h += '<h1>Getting ready</h1><p class="lede">This page runs every check in order, cheapest first, and offers the fix for each one that fails. When all of them pass it becomes the dashboard by itself.</p>' + tiles;
@@ -518,7 +531,7 @@ function renderBuilder(s) {
   delete htmlCache.builder;
   var base = (s.node.folder || '').split('/').filter(Boolean).pop() || 'my-org';
   var lib = s.library || [];
-  var h = '<div class="two"><div class="choice"><h3>I have one</h3><label class="f">Folder<input id="u-folder" value="' + esc(s.node.folder || '~/git/') + '"></label><div><button data-act="use-folder">Check it</button></div><p class="small">Any folder with <code>dashing.yaml</code>, cloned from GitHub. The checks run on it right away.</p></div>';
+  var h = '<div class="two"><div class="choice"><h3>I have one</h3><label class="f">Folder<input id="u-folder" value="' + esc(s.node.folder || '~/git/') + '"></label><div><button data-act="use-folder">Check it</button></div><p class="small">Any folder with <code>agentic-loop.yaml</code>, cloned from GitHub. The checks run on it right away.</p></div>';
   h += '<div class="choice"><h3>Build a new one</h3>';
   h += '<label class="f">Name<input id="b-name" value="' + esc(base) + '"></label>';
   h += '<label class="f">Folder<input id="b-folder" value="' + esc(s.node.folder || '~/git/' + base) + '"></label>';
@@ -557,7 +570,7 @@ function renderBuilder(s) {
   if (templates[0]) pickTemplate(templates[0].name); else setMode('pick');
   function note() {
     var repo = $('b-repo').value.trim() ? $('b-owner').value + '/' + $('b-repo').value.trim() : '';
-    $('b-note').textContent = (repo ? 'Creates ' + repo + ' with its Project, ' : 'Without a repository: ') + 'writes dashing.yaml, the agents and the actions into ' + $('b-folder').value.trim() + ', ' + (repo ? 'pushes the first commit, ' : 'makes the first commit, ') + 'then runs the checks on the new folder.';
+    $('b-note').textContent = (repo ? 'Creates ' + repo + ' with its Project, ' : 'Without a repository: ') + 'writes agentic-loop.yaml, the agents and the actions into ' + $('b-folder').value.trim() + ', ' + (repo ? 'pushes the first commit, ' : 'makes the first commit, ') + 'then runs the checks on the new folder.';
   }
   $('b-repo').addEventListener('input', note); $('b-owner').addEventListener('change', note); $('b-folder').addEventListener('input', note);
   note();
@@ -798,13 +811,13 @@ function renderWork(s) {
 
 function renderChat(s) {
   var c = s.chat;
-  var desk = s.org ? s.org.agents.find(isDesk) : null;
+  var desk = deskOf(s);
   setHtml($('deskSub'), c.busy ? 'answering…' : desk ? cap(desk.name) + ' answers from the board and files tasks' : 'answers from the board and files tasks');
   $('c-send').disabled = !!c.busy;
   var el = $('chat');
   var stick = el.scrollTop + el.clientHeight >= el.scrollHeight - 10 || !htmlCache.chat;
   var h = c.messages.length ? c.messages.map(function (m) {
-    if (m.role === 'desk') return '<div class="msg desk">' + (desk ? avatar(desk) : '<span class="av"></span>') + '<div>' + esc(m.text) + '<div class="meta">' + hm(m.at) + (m.did && m.did.length ? ' · ' + esc(m.did.join('; ')) : '') + (m.costUsd ? ' · ~$' + m.costUsd.toFixed(2) : '') + '</div></div></div>';
+    if (m.role === 'desk') return '<div class="msg desk" style="--c:' + (desk ? desk.c : 'var(--ink-3)') + '">' + (desk ? avatar(desk) : '<span class="av"></span>') + '<div><div class="head"><b>' + esc(desk ? cap(desk.name) : 'Front desk') + '</b>' + (desk && desk.role ? '<span class="role">' + esc(desk.role) + '</span>' : '') + '</div>' + esc(m.text) + '<div class="meta">' + hm(m.at) + (m.did && m.did.length ? ' · ' + esc(m.did.join('; ')) : '') + (m.costUsd ? ' · ~$' + m.costUsd.toFixed(2) : '') + '</div></div></div>';
     return '<div class="msg ' + m.role + '">' + esc(m.text) + '</div>';
   }).join('') + (c.busy ? '<div class="msg note">reading the board…</div>' : '') : '<div class="msg note">Nobody has said anything yet. Ask about the board, or ask for work to be done; it files the task and ' + esc(s.org ? cap(s.org.director) : 'the Director') + ' assigns it.</div>';
   var before = htmlCache.chat;

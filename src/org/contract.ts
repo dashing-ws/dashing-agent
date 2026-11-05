@@ -4,16 +4,16 @@ import YAML from 'yaml';
 import { normalizeFolder, isUnrestricted, type Access } from '../runner/access.js';
 
 /**
- * The organization contract: what a folder must contain for dashing-agent to run it.
+ * The organization contract: what a folder must contain for Agentic Loop to run it.
  *
- *   dashing.yaml                 name, director, GitHub project, paths, lease and budget settings
+ *   agentic-loop.yaml                 name, logo, director, GitHub project, paths, lease and budget settings
  *   agents/<name>.md             one agent: YAML front matter (role, model, tools) + the system prompt
  *   actions/<name>/manifest.yaml a script the mechanical loop may run, with typed parameters
  *   actions/<name>/run.sh        the script itself
  *   control/kill                 present means stop everything
  *
- * Only dashing.yaml has a fixed place. The three folders are the defaults; an organization that
- * keeps its files elsewhere names them under `paths:` in dashing.yaml. dashing-agent reads these
+ * Only agentic-loop.yaml has a fixed place. The three folders are the defaults; an organization that
+ * keeps its files elsewhere names them under `paths:` in agentic-loop.yaml. Agentic Loop reads these
  * files and never writes them (except `init`, which writes starters, and `setup`, which writes the
  * Project number back).
  */
@@ -46,6 +46,8 @@ export interface PathsConfig {
 export interface OrgConfig {
   name: string;
   director: string;
+  /** One emoji, or the path of an image file inside the organization (avatars/logo.png); the page shows it in the header. */
+  logo?: string;
   github: { project?: number };
   paths: PathsConfig;
   model: string;
@@ -93,6 +95,8 @@ export interface ActionManifest {
 
 export interface Organization {
   dir: string;
+  /** The config file's name in the folder: CONFIG_FILE, or OLD_CONFIG_FILE until it is renamed. */
+  configFile: string;
   config: OrgConfig;
   agents: AgentSpec[];
   director: AgentSpec;
@@ -104,7 +108,9 @@ export interface OrgLoad {
   problems: string[];
 }
 
-export const CONFIG_FILE = 'dashing.yaml';
+export const CONFIG_FILE = 'agentic-loop.yaml';
+/** The file's name before 2026-11-05. Still read; pre-flight offers the rename. */
+export const OLD_CONFIG_FILE = 'dashing.yaml';
 export const AGENTS_DIR = 'agents';
 export const ACTIONS_DIR = 'actions';
 export const CONTROL_DIR = 'control';
@@ -144,11 +150,11 @@ function num(v: unknown, fallback: number): number {
 }
 
 /** A relative folder inside the organization: no leading slash, no `..`, forward slashes. */
-function relDir(v: unknown, fallback: string, key: string, problems: string[]): string {
+function relDir(v: unknown, fallback: string, key: string, problems: string[], file: string): string {
   if (v === undefined) return fallback;
   const raw = typeof v === 'string' ? v.trim().replace(/\\/g, '/').replace(/^\.\//, '').replace(/\/+$/, '') : '';
   if (!raw || raw.startsWith('/') || raw.split('/').includes('..')) {
-    problems.push(`${CONFIG_FILE}: paths.${key} must be a folder inside the organization, like "${fallback}"`);
+    problems.push(`${file}: paths.${key} must be a folder inside the organization, like "${fallback}"`);
     return fallback;
   }
   return raw;
@@ -161,18 +167,20 @@ export function parseFrontMatter(text: string): { data: Record<string, unknown>;
   return { data, body: (m[2] ?? '').trim() };
 }
 
-export function parseConfig(text: string, problems: string[]): OrgConfig | undefined {
+export function parseConfig(text: string, problems: string[], file: string = CONFIG_FILE): OrgConfig | undefined {
   let raw: Record<string, unknown>;
   try {
     raw = asRecord(YAML.parse(text));
   } catch (e) {
-    problems.push(`${CONFIG_FILE}: ${(e as Error).message}`);
+    problems.push(`${file}: ${(e as Error).message}`);
     return undefined;
   }
   const name = typeof raw.name === 'string' ? raw.name.trim() : '';
   const director = typeof raw.director === 'string' ? raw.director.trim() : '';
-  if (!name) problems.push(`${CONFIG_FILE}: "name" is missing`);
-  if (!director) problems.push(`${CONFIG_FILE}: "director" is missing (the agent that reads the inbox and assigns work)`);
+  if (!name) problems.push(`${file}: "name" is missing`);
+  if (!director) problems.push(`${file}: "director" is missing (the agent that reads the inbox and assigns work)`);
+  const logo = typeof raw.logo === 'string' ? raw.logo.trim() : '';
+  if (logo && /\.(png|jpe?g|gif|svg|webp)$/i.test(logo) && !isAvatarFile(logo)) problems.push(`${file}: logo "${logo}" must be an image file inside the organization, like "avatars/logo.png"`);
   const gh = asRecord(raw.github);
   const paths = asRecord(raw.paths);
   const lease = asRecord(raw.lease);
@@ -182,11 +190,12 @@ export function parseConfig(text: string, problems: string[]): OrgConfig | undef
   return {
     name,
     director,
+    ...(logo ? { logo } : {}),
     github: project !== undefined ? { project } : {},
     paths: {
-      agents: relDir(paths.agents, DEFAULTS.paths.agents, 'agents', problems),
-      actions: relDir(paths.actions, DEFAULTS.paths.actions, 'actions', problems),
-      control: relDir(paths.control, DEFAULTS.paths.control, 'control', problems),
+      agents: relDir(paths.agents, DEFAULTS.paths.agents, 'agents', problems, file),
+      actions: relDir(paths.actions, DEFAULTS.paths.actions, 'actions', problems, file),
+      control: relDir(paths.control, DEFAULTS.paths.control, 'control', problems, file),
     },
     model: typeof raw.model === 'string' && raw.model ? raw.model : DEFAULTS.model,
     lease: {
@@ -322,26 +331,33 @@ export function isAvatarFile(avatar: string | undefined): avatar is string {
   return /\.(png|jpe?g|gif|svg|webp)$/i.test(a) && !a.startsWith('/') && !a.split('/').includes('..');
 }
 
+/** The config file present in the folder: CONFIG_FILE, else OLD_CONFIG_FILE, else nothing. */
+export async function findConfigFile(dir: string): Promise<string | undefined> {
+  if (await exists(path.join(dir, CONFIG_FILE))) return CONFIG_FILE;
+  if (await exists(path.join(dir, OLD_CONFIG_FILE))) return OLD_CONFIG_FILE;
+  return undefined;
+}
+
 export async function loadOrganization(dir: string): Promise<OrgLoad> {
   const problems: string[] = [];
-  const configPath = path.join(dir, CONFIG_FILE);
-  if (!(await exists(configPath))) {
+  const file = await findConfigFile(dir);
+  if (!file) {
     problems.push(`${CONFIG_FILE} is missing`);
     return { problems };
   }
-  const config = parseConfig(await fs.readFile(configPath, 'utf8'), problems);
+  const config = parseConfig(await fs.readFile(path.join(dir, file), 'utf8'), problems, file);
   if (!config) return { problems };
   const agents = await loadAgents(dir, config.paths.agents, problems);
   const actions = await loadActions(dir, config.paths.actions, problems);
   const director = agents.find((a) => a.name === config.director);
   if (config.director && !director) {
-    problems.push(`${CONFIG_FILE}: director "${config.director}" has no file ${config.paths.agents}/${config.director}.md`);
+    problems.push(`${file}: director "${config.director}" has no file ${config.paths.agents}/${config.director}.md`);
   }
   if (!(await exists(path.join(dir, config.paths.control)))) {
     problems.push(`${config.paths.control}/ is missing (an empty folder; "${config.paths.control}/${KILL_FILE}" stops every node)`);
   }
   if (problems.length || !director) return { problems };
-  return { org: { dir, config, agents, director, actions }, problems };
+  return { org: { dir, configFile: file, config, agents, director, actions }, problems };
 }
 
 /** True when `<control>/kill` exists. `control` is the organization's control folder (default `control`). */

@@ -109,7 +109,7 @@ export class Fixer {
   }
 
   private async execute(command: string[]): Promise<number> {
-    if (command[0] === 'dashing-agent') {
+    if (command[0] === 'agentic-loop') {
       try {
         await this.own(command.slice(1), (l) => this.append(l));
         return 0;

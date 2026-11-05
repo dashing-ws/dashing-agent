@@ -1,3 +1,3 @@
 #!/usr/bin/env bash
 set -euo pipefail
-echo "task #$DASHING_TASK on $DASHING_NODE says: $DASHING_PARAM_MESSAGE"
+echo "task #$AGENTIC_LOOP_TASK on $AGENTIC_LOOP_NODE says: $AGENTIC_LOOP_PARAM_MESSAGE"
