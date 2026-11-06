@@ -157,6 +157,15 @@ section>.body{flex:1;min-height:0;overflow:auto;padding:12px 18px 16px;overscrol
 .agent.is-active .now,.agent.is-remote .now{color:var(--ink-2)}
 .apart{margin-top:14px;padding-top:12px;border-top:1px dashed var(--line)}
 .apart p{margin:6px 0 0 8px;color:var(--ink-3);font-size:11.5px}
+.sources{margin-top:14px;padding-top:12px;border-top:1px dashed var(--line)}
+.sources h3{display:flex;align-items:center;gap:8px;font:500 10.5px/1 var(--font-display);letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3);margin:0 0 6px;padding:0 8px}
+.sources h3::after{content:"";flex:1;height:1px;background:var(--line)}
+.sources .repo{display:grid;grid-template-columns:1fr auto;gap:2px 10px;padding:5px 8px;border-radius:8px;font-size:12.5px}
+.sources .repo:hover{background:var(--surface-2)}
+.sources .repo a{color:var(--ink);text-decoration:none;font-family:var(--font-mono);font-size:12px}
+.sources .repo .meta{color:var(--ink-3);font-size:11.5px;white-space:nowrap}
+.sources .repo .note{grid-column:1 / -1;color:var(--ink-3);font-size:11.5px}
+.sources p{margin:6px 0 0 8px;color:var(--ink-3);font-size:11.5px}
 
 /* the description: one card to the right of the agent, over the activity; it never moves the other agents */
 #pop{position:fixed;z-index:50;width:340px;max-width:calc(100vw - 32px);padding:12px 14px;border:1px solid var(--line);border-left:4px solid var(--c,var(--line));border-radius:10px;background:var(--bg);color:var(--ink-2);font-size:12.5px;box-shadow:0 12px 36px rgba(0,0,0,.5);display:none}
@@ -677,7 +686,22 @@ function renderChart(s) {
   var desks = agents.filter(isDesk);
   if (desks.length) h += '<div class="apart">' + desks.map(function (a) { return agentCard(s, a, false); }).join('') + '<p>' + esc(cap(desks[0].name)) + ' takes no tasks and touches no files. People talk to it; it files issues in Inbox; ' + esc(director ? cap(director.name) : 'the Director') + ' takes it from there.</p></div>';
   else if (s.org) h += '<div class="apart"><p>The chat on this page is answered by the library&#39;s front desk; this organization has none of its own.</p></div>';
+  if (s.org) h += renderSources(s);
   setHtml($('chart'), h || '<div class="empty">no organization loaded</div>');
+}
+
+// The repositories the agents may reach: their own, then each one a person granted at the front desk.
+function renderSources(s) {
+  var list = s.sources || [];
+  var granted = list.filter(function (x) { return !x.own; });
+  var h = '<div class="sources"><h3>Repositories · ' + (granted.length ? plural(granted.length, 'grant') : 'own only') + '</h3>';
+  list.forEach(function (x) {
+    var meta = x.own ? 'own' : (x.granted ? 'granted ' + esc(x.granted) : 'granted') + (x.task ? ' · ' + taskLink(s, x.task) : '');
+    h += '<div class="repo"><a href="' + esc(x.url) + '" target="_blank" rel="noopener">' + esc(x.repo) + '</a><span class="meta">' + meta + '</span>' + (x.note ? '<span class="note">' + esc(x.note) + '</span>' : '') + '</div>';
+  });
+  if (!list.length) h += '<p>read on the next tick</p>';
+  h += '<p>The agents read these and open pull requests in them, nothing else on GitHub. Grant or take one back at the front desk: “add owner/name to your context”.</p></div>';
+  return h;
 }
 
 function liveCards(s) {

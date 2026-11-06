@@ -6,7 +6,7 @@ import type { CheckResult } from './index.js';
 function store(): StateStore {
   const s: NodeState = {
     node: { id: 'me@laptop', user: 'me', host: 'laptop', folder: '/x', startedAt: '', port: 0, version: 't' },
-    org: null, repo: null, preflight: null, leases: [], loops: {}, tasks: [], fix: null, library: [], templates: [], owners: [], chat: { messages: [], busy: false }, log: [],
+    org: null, repo: null, preflight: null, leases: [], loops: {}, tasks: [], sources: [], fix: null, library: [], templates: [], owners: [], chat: { messages: [], busy: false }, log: [],
   };
   const st = new StateStore(s);
   st.log = () => {};

@@ -12,6 +12,7 @@ import { StateStore, type NodeState } from './state.js';
 import { startUi } from './ui/server.js';
 import { Loop } from './loops/loop.js';
 import { AgentLoop } from './loops/agent-loop.js';
+import { mirrorBoard } from './loops/board-mirror.js';
 import { MechanicalLoop } from './loops/mechanical-loop.js';
 import { GitRefLease } from './lease/git-ref-lease.js';
 import { GitHubProjectStore } from './github/task-store.js';
@@ -143,6 +144,7 @@ async function runNode(initialFolder: string, args: Args, first: PreflightReport
     leases: [],
     loops: {},
     tasks: [],
+    sources: [],
     fix: null,
     library,
     templates,
@@ -201,7 +203,9 @@ async function runNode(initialFolder: string, args: Args, first: PreflightReport
     started = true;
     const org = r.org;
     const workRoot = path.join(os.homedir(), '.agentic-loop', 'work', path.basename(folder));
-    const ghStore = new GitHubProjectStore({ owner: r.repo.owner, repo: r.repo.name, project: r.project, cwd: folder });
+    const reposRoot = path.join(os.homedir(), '.agentic-loop', 'repos');
+    const own = `${r.repo.owner}/${r.repo.name}`;
+    const ghStore = mirrorBoard(new GitHubProjectStore({ owner: r.repo.owner, repo: r.repo.name, project: r.project, cwd: folder }), state);
     store = ghStore;
     const lease = new GitRefLease(folder);
     let current: Organization = org;
@@ -215,7 +219,7 @@ async function runNode(initialFolder: string, args: Args, first: PreflightReport
       }
       return load.org ?? undefined;
     };
-    const agent = new AgentLoop({ orgDir: folder, reload, store: ghStore, lease, state, holder, auditDir, workRoot, only: args.only });
+    const agent = new AgentLoop({ orgDir: folder, reload, store: ghStore, lease, state, holder, auditDir, workRoot, reposRoot, own, ...(r.login ? { login: r.login } : {}), only: args.only });
     const mechanical = new MechanicalLoop({ reload, store: ghStore, lease, state, holder });
     agentImpl = agent;
     const deskAgent = (): AgentSpec => {
@@ -224,7 +228,7 @@ async function runNode(initialFolder: string, args: Args, first: PreflightReport
       if (!libraryDesk) throw new Error('the agent library has no front desk');
       return libraryDesk;
     };
-    desk = new FrontDesk({ state, store: ghStore, org: () => current, agent: deskAgent, node: holder, auditDir, onFiled: () => agent.requestPlanning() });
+    desk = new FrontDesk({ state, store: ghStore, org: () => current, agent: deskAgent, node: holder, auditDir, onFiled: () => agent.requestPlanning(), own, grants: () => agent.grants });
     const backoff = async (e: Error): Promise<number | undefined> => (isRateLimit(e) ? ((await ghGraphqlResetMs()) ?? 5 * 60_000) : undefined);
     agentLoop = new Loop('agent', org.config.loops.agentSeconds * 1000, agent.tick, state, backoff);
     mechanicalLoop = new Loop('mechanical', org.config.loops.mechanicalSeconds * 1000, mechanical.tick, state, backoff);

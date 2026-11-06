@@ -9,9 +9,9 @@ Agentic Loop runs an organization of AI agents from a GitHub repository on a lap
 - `src/org/contract.ts` the organization folder: `agentic-loop.yaml` at the root, then `agents/*.md`, `actions/*/manifest.yaml`, `control/kill` at the paths it names
 - `src/lease/git-ref-lease.ts` leases as git refs with `--force-with-lease`; tested against a local bare repo
 - `src/github/` the `gh` wrapper, the Project-backed task store, an in-memory store for tests
-- `src/runner/` the Agent SDK run with the deny hook and the audit file; the ledger tools agents call; `workspace.ts` the worktree, branch and pull request per task; `access.ts` the folder rules the hook enforces; `chat-tools.ts` and `front-desk.ts` the chat on the page; `narrate.ts` a tool call in plain words for the feed
+- `src/runner/` the Agent SDK run with the deny hook and the audit file; the ledger tools agents call; `workspace.ts` the worktree, branch and pull request per task, in the organization and in a granted repository; `access.ts` the folder rules the hook enforces; `grants.ts` the granted repositories from `context/repos.md` as merged on the default branch; `github-tools.ts` the read tools over `gh`, refused outside the grants; `chat-tools.ts` and `front-desk.ts` the chat on the page; `narrate.ts` a tool call in plain words for the feed
 - `src/mechanical/` the plan format, its validation, the handler catalog (`run_script`, `merge_pr`, `comment`)
-- `src/loops/` the loop runner, the agent loop (Director lease, claim, run), the mechanical loop; `run-tracker.ts` feeds a run into the state for the page
+- `src/loops/` the loop runner, the agent loop (Director lease, claim, run), the mechanical loop; `run-tracker.ts` feeds a run into the state for the page and `board-mirror.ts` every board write, so the Work panel changes at once; `pr-watch.ts` marks a task Done when its pull requests in granted repositories are merged
 - `src/ui/` the localhost page (`page.ts`, the gate and the dashboard in one HTML string) and its server with the event stream; `src/state.ts` the one JSON state the page renders, with the activity feed and the runs in progress
 - `examples/org/` the smallest organization that runs
 
@@ -23,7 +23,7 @@ Agentic Loop runs an organization of AI agents from a GitHub repository on a lap
 - TypeScript, ESM, Node 22, `strict`. Imports end in `.js`. No framework for the UI: one HTML page, `node:http`, server-sent events.
 - The organization is its own repository; Agentic Loop is the tool. The tool reads the organization and writes nothing into it at run time. Nothing organization-specific (names, agents, policies) goes into this repository except `examples/org`.
 - Everything that touches GitHub goes through `gh`. Nothing stores a token.
-- An agent never gets a tool the harness did not list, and never a path outside the folders its spec grants. Keep the deny hook and `settingSources: []` in every run.
+- An agent never gets a tool the harness did not list, and never a path outside the folders its spec grants. Keep the deny hook and `settingSources: []` in every run. Beyond its own repository an agent reaches only what `context/repos.md` grants, read from the default branch, never from a working copy.
 - A plan step is a handler from the catalog with validated arguments. Never add a handler that runs free text. The same for pre-flight fixes: the page runs the command the check defined, with placeholders checked, never a command the page sends.
 - A run never pushes the default branch. Agents work on `agentic-loop/task-<n>`; the harness pushes and opens the pull request.
 - Write for a reader who did not watch you work. Short sentences, plain words. Docs follow `~/git/brain/me/working-with-eugene.md`.

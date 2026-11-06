@@ -64,3 +64,17 @@ describe('checkAccess', () => {
     expect(describeAccess({ read: [''], write: ['notes'] })).toBe('read everything, write notes/');
   });
 });
+
+describe('checkAccess with a second checkout', () => {
+  const a: Access = { read: [''], write: ['src'] };
+  const repo = '/work/task-1-api';
+
+  it('applies the same folders inside the granted checkout and denies everything between', () => {
+    expect(checkAccess('Read', { file_path: '/work/task-1-api/pom.xml' }, cwd, a, [repo]).ok).toBe(true);
+    expect(checkAccess('Write', { file_path: '/work/task-1-api/src/Main.java' }, cwd, a, [repo]).ok).toBe(true);
+    expect(checkAccess('Write', { file_path: '/work/task-1-api/pom.xml' }, cwd, a, [repo]).ok).toBe(false);
+    expect(checkAccess('Read', { file_path: '/work/task-1-api/.git/config' }, cwd, a, [repo]).ok).toBe(false);
+    expect(checkAccess('Read', { file_path: '/work/other/x' }, cwd, a, [repo])).toMatchObject({ ok: false, reason: expect.stringContaining('outside your checkouts') });
+    expect(checkAccess('Read', { file_path: '/work/task-1-api/pom.xml' }, cwd, a).ok).toBe(false);
+  });
+});

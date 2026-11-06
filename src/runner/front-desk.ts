@@ -2,6 +2,7 @@ import path from 'node:path';
 import type { AgentSpec, Organization } from '../org/contract.js';
 import type { Task, TaskStore } from '../github/task-store.js';
 import type { StateStore, ChatMessage } from '../state.js';
+import type { Grant } from './grants.js';
 import { runAgent } from './agent-runner.js';
 import { chatTools } from './chat-tools.js';
 import { trackRun } from '../loops/run-tracker.js';
@@ -21,6 +22,9 @@ export interface FrontDeskDeps {
   node: string;
   auditDir: string;
   onFiled: (task: Task) => void;
+  /** The organization's own repository and the granted ones, for "what can they reach". */
+  own?: string;
+  grants?: () => Grant[];
 }
 
 const HISTORY = 12;
@@ -71,6 +75,8 @@ export class FrontDesk {
       log: (t) => { calls.push(t); log(t); },
       event: (e) => state.event({ who: agent.name, ...e, text: `${e.text} · for ${node.split('@')[0]}` }),
       onFiled: this.d.onFiled,
+      ...(this.d.own ? { own: this.d.own } : {}),
+      ...(this.d.grants ? { grants: this.d.grants } : {}),
     });
     const prompt = [
       history.length ? `The conversation so far, oldest first:\n${history.map((m) => `${m.role === 'you' ? 'Person' : 'Front desk'}: ${m.text}`).join('\n')}\n` : '',

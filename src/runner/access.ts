@@ -2,9 +2,11 @@ import path from 'node:path';
 
 /**
  * What an agent may touch: folders of its checkout it may read, and folders it may write.
- * Enforced in the PreToolUse hook on every built-in file tool. Paths outside the checkout and
- * the `.git` folder are always denied. Bash cannot be limited this way, so an agent with Bash
- * must be given everything (the loader refuses anything else).
+ * Enforced in the PreToolUse hook on every built-in file tool. Paths outside the checkouts and
+ * the `.git` folder are always denied. A run has one checkout, the organization's, and gains a
+ * second when the agent calls `work_in` on a granted repository; the same folders apply in each.
+ * Bash cannot be limited this way, so an agent with Bash must be given everything (the loader
+ * refuses anything else).
  */
 
 export interface Access {
@@ -58,8 +60,19 @@ function inside(rel: string, folders: string[]): boolean {
 
 export type AccessVerdict = { ok: true } | { ok: false; reason: string };
 
-/** Decides one tool call. Tools without a path (web, todo, ledger tools) pass. */
-export function checkAccess(tool: string, input: unknown, cwd: string, access: Access): AccessVerdict {
+/** The folder of `roots` that holds `abs`, or undefined when none does. */
+function rootOf(abs: string, roots: string[]): string | undefined {
+  return roots.find((r) => {
+    const rel = path.relative(r, abs);
+    return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
+  });
+}
+
+/**
+ * Decides one tool call. Tools without a path (web, todo, ledger tools) pass. Relative paths
+ * resolve against `cwd`; `roots` are the other checkouts of the run (a granted repository).
+ */
+export function checkAccess(tool: string, input: unknown, cwd: string, access: Access, roots: string[] = []): AccessVerdict {
   const spec = FILE_TOOLS[tool];
   if (!spec) return { ok: true };
   const args = input && typeof input === 'object' ? (input as Record<string, unknown>) : {};
@@ -69,8 +82,12 @@ export function checkAccess(tool: string, input: unknown, cwd: string, access: A
   }
   const target = typeof given === 'string' && given.trim() ? given : cwd;
   const abs = path.resolve(cwd, target);
-  const rel = path.relative(cwd, abs).split(path.sep).join('/');
-  if (rel.startsWith('..') || path.isAbsolute(rel)) return { ok: false, reason: `${rel || target} is outside your checkout` };
+  const root = rootOf(abs, [cwd, ...roots]);
+  if (!root) {
+    const fromCwd = path.relative(cwd, abs).split(path.sep).join('/');
+    return { ok: false, reason: `${fromCwd || target} is outside your checkout${roots.length ? 's' : ''}` };
+  }
+  const rel = path.relative(root, abs).split(path.sep).join('/');
   if (rel === '.git' || rel.startsWith('.git/')) return { ok: false, reason: '.git is off limits' };
   if (tool === 'Glob' && typeof args.pattern === 'string' && args.pattern.split(/[\\/]/).includes('..')) {
     return { ok: false, reason: 'a glob pattern may not climb with ..' };

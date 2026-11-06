@@ -89,6 +89,16 @@ export interface RepoView {
   project?: number;
 }
 
+/** One repository the agents may reach: the organization's own, or a granted one from context/repos.md. */
+export interface SourceView {
+  repo: string;
+  url: string;
+  own: boolean;
+  granted?: string;
+  task?: number;
+  note?: string;
+}
+
 /** A pre-flight fix running (or just run) from the page. */
 export interface FixView {
   id: string;
@@ -211,6 +221,8 @@ export interface NodeState {
   leases: LeaseView[];
   loops: Record<string, LoopView>;
   tasks: TaskView[];
+  /** The repositories the agents may read and open pull requests in, as merged on the default branch. */
+  sources: SourceView[];
   fix: FixView | null;
   library: LibraryView[];
   templates: TemplateView[];

@@ -69,6 +69,8 @@ export interface AgentSpec {
   model?: string;
   /** Built-in Claude Code tools the agent may use (Read, Glob, Grep, Bash, Write, Edit, WebFetch, WebSearch). */
   tools: string[];
+  /** Tool sets the harness serves, named in `tools:` next to the built-ins: `github` reads the granted repositories and works in one; `github-account` lists the person's own repositories (the context curator). */
+  harnessTools: HarnessTool[];
   /** Folders of the checkout the agent may read and write. Default: read everything, write nothing. */
   access: Access;
   /** The system prompt: the Markdown body of the spec file. */
@@ -119,6 +121,10 @@ export const KILL_FILE = 'kill';
 const BUILTIN_TOOLS = new Set([
   'Read', 'Glob', 'Grep', 'Bash', 'Write', 'Edit', 'MultiEdit', 'WebFetch', 'WebSearch', 'NotebookEdit', 'TodoWrite', 'Task', 'LS',
 ]);
+
+export type HarnessTool = 'github' | 'github-account';
+export const HARNESS_TOOLS: HarnessTool[] = ['github', 'github-account'];
+const HARNESS_TOOL_SET = new Set<string>(HARNESS_TOOLS);
 
 const NAME_RE = /^[a-z][a-z0-9-]{0,39}$/;
 const COLOR_RE = /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i;
@@ -242,8 +248,10 @@ export function parseAgentText(text: string, label: string, fallbackName: string
     return undefined;
   }
   const tools = Array.isArray(data.tools) ? data.tools.filter((t): t is string => typeof t === 'string') : [];
-  const unknown = tools.filter((t) => !BUILTIN_TOOLS.has(t));
+  const unknown = tools.filter((t) => !BUILTIN_TOOLS.has(t) && !HARNESS_TOOL_SET.has(t));
   if (unknown.length) problems.push(`${label}: unknown tools ${unknown.join(', ')}`);
+  // Listing the account implies reading what is granted.
+  const harnessTools = HARNESS_TOOLS.filter((t) => tools.includes(t) || (t === 'github' && tools.includes('github-account')));
   const access = parseAccess(data.access, label, problems);
   if (tools.includes('Bash') && !isUnrestricted(access)) {
     problems.push(`${label}: Bash reaches every file, so an agent with Bash must say so: access: { read: [.], write: [.] }`);
@@ -260,6 +268,7 @@ export function parseAgentText(text: string, label: string, fallbackName: string
     ...(color && COLOR_RE.test(color) ? { color: color.toLowerCase() } : {}),
     ...(typeof data.model === 'string' && data.model ? { model: data.model } : {}),
     tools: tools.filter((t) => BUILTIN_TOOLS.has(t)),
+    harnessTools,
     access,
     prompt: body,
     file: label,

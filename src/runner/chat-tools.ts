@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { tool, type SdkMcpToolDefinition } from '@anthropic-ai/claude-agent-sdk';
 import type { Organization } from '../org/contract.js';
 import type { Task, TaskStore } from '../github/task-store.js';
+import type { Grant } from './grants.js';
 
 /**
  * The tools of the front desk, the agent behind the chat on the page. It can look at the board
@@ -29,6 +30,9 @@ export interface ChatToolContext {
   event?: (e: { verb: string; text: string; task?: number }) => void;
   /** Called after a task was filed, so the Director can plan right away. */
   onFiled?: (task: Task) => void;
+  /** The organization's own repository (owner/name) and the granted ones, for "what can they reach". */
+  own?: string;
+  grants?: () => Grant[];
 }
 
 export function chatTools(ctx: ChatToolContext): Tool[] {
@@ -52,6 +56,15 @@ export function chatTools(ctx: ChatToolContext): Tool[] {
       if (!task) return text(`there is no task #${number}`, true);
       const comments = await ctx.store.comments(task);
       return text(JSON.stringify({ ...brief(task), body: task.body, closed: task.closed ?? false, comments: comments.slice(-8) }, null, 2));
+    }, { annotations: { readOnlyHint: true } }),
+
+    tool('granted_repos', 'The repositories the agents may read and open pull requests in: the organization\'s own, then each granted one with when and by which task it was granted. A person grants or takes one back by asking for a task here.', {}, async () => {
+      const grants = ctx.grants?.() ?? [];
+      const rows = [
+        ...(ctx.own ? [{ repo: ctx.own, note: 'this organization; always' }] : []),
+        ...grants.map((g) => ({ repo: g.repo, url: `https://github.com/${g.repo}`, ...(g.granted ? { granted: g.granted } : {}), ...(g.task ? { task: g.task } : {}), ...(g.note ? { note: g.note } : {}) })),
+      ];
+      return text(JSON.stringify(rows, null, 2));
     }, { annotations: { readOnlyHint: true } }),
 
     tool('file_task', 'File a new task in Inbox for the Director to assign. The title says what; the body says what was asked and what done looks like.', {

@@ -6,10 +6,14 @@ import type { GitRefLease, Lease } from '../lease/git-ref-lease.js';
 import type { StateStore } from '../state.js';
 import { runAgent } from '../runner/agent-runner.js';
 import { workerTools, directorTools, type ToolEvent } from '../runner/ledger-tools.js';
-import { openWorkspace, closeWorkspace, type Workspace } from '../runner/workspace.js';
+import { githubTools } from '../runner/github-tools.js';
+import { readGrants, type Grant } from '../runner/grants.js';
+import { openWorkspace, openRepoWorkspace, closeWorkspace, defaultBranch, type Workspace, type CloseResult } from '../runner/workspace.js';
 import type { Loop } from './loop.js';
 import { trackRun, clock } from './run-tracker.js';
+import { PullRequestWatch } from './pr-watch.js';
 import { minutes } from '../util/ids.js';
+import type { SourceView } from '../state.js';
 
 /** States a closed issue may keep. */
 const FINAL = new Set<TaskStatus>(['Done', 'Rejected', 'Failed']);
@@ -25,6 +29,12 @@ export interface AgentLoopDeps {
   auditDir: string;
   /** Where task worktrees go (outside the organization folder). */
   workRoot: string;
+  /** Where clones of granted repositories go, one per owner/name. */
+  reposRoot: string;
+  /** The organization's own repository, owner/name. */
+  own: string;
+  /** The signed-in GitHub login, for the context curator's account list. */
+  login?: string;
   /** Agents this laptop may run; empty means all. */
   only: string[];
 }
@@ -41,9 +51,21 @@ export class AgentLoop {
   private readonly active = new Set<number>();
   /** The task leases seen last time, by name, to tell a new claim on another laptop. */
   private seenLeases = new Map<string, string>();
+  /** The organization's default branch, read once. */
+  private base: string | undefined;
+  /** The granted repositories as merged on the default branch, read every tick. */
+  private granted: Grant[] = [];
+  private readonly prs: PullRequestWatch;
   loop: Loop | undefined;
 
-  constructor(private readonly d: AgentLoopDeps) {}
+  constructor(private readonly d: AgentLoopDeps) {
+    this.prs = new PullRequestWatch(d.store, d.own);
+  }
+
+  /** The granted repositories as of the last tick, for the front desk. */
+  get grants(): Grant[] {
+    return this.granted;
+  }
 
   /** A task was just filed on this laptop: plan on the next tick, and run it now. */
   requestPlanning(): void {
@@ -86,6 +108,14 @@ export class AgentLoop {
       if (s.org) s.org.killSwitch = false;
     });
 
+    // The grants, as merged on the default branch: the fence for the GitHub tools and work_in.
+    this.base ??= await defaultBranch(this.d.orgDir);
+    const read = await readGrants(this.d.orgDir, this.base);
+    this.granted = read.grants;
+    state.update((s) => {
+      s.sources = sourcesView(this.d.own, read.grants);
+    });
+
     const tasks = await store.list();
     // An issue closed on GitHub (a merged pull request, a person) is done, whatever the board says.
     for (const t of tasks) {
@@ -96,9 +126,23 @@ export class AgentLoop {
         state.event({ who: 'agent loop', verb: 'marked', text: `#${t.number} Done · the issue was closed on GitHub`, task: t.number });
       }
     }
-    state.update((s) => {
-      s.tasks = tasks.map((t) => ({ number: t.number, title: t.title, status: t.status, url: t.url, ...(t.agent ? { agent: t.agent } : {}) }));
-    });
+    // A task in Review whose pull requests in granted repositories are all merged is done too.
+    for (const t of tasks) {
+      if (t.status !== 'Review' || t.closed) continue;
+      let merged: 'merged' | 'open' | 'none';
+      try {
+        merged = await this.prs.status(t);
+      } catch (e) {
+        state.warn(`could not check the pull requests of #${t.number}: ${(e as Error).message.split('\n')[0]}`, 'agent');
+        continue;
+      }
+      if (merged !== 'merged') continue;
+      log(`#${t.number}: every pull request it opened is merged; marking it Done`);
+      await store.setStatus(t, 'Done');
+      await store.comment(t, `**Done.** Every pull request this task opened in a granted repository is merged.\n\n<sub>${holder}</sub>`);
+      state.event({ who: 'agent loop', verb: 'marked', text: `#${t.number} Done · its pull requests are merged`, task: t.number });
+      this.prs.forget(t.number);
+    }
 
     // The Director: one laptop at a time.
     const inbox = tasks.filter((t) => t.status === 'Inbox');
@@ -158,6 +202,8 @@ export class AgentLoop {
     const tools = directorTools(ctx);
     const prompt = [
       `There ${inbox.length === 1 ? 'is 1 task' : `are ${inbox.length} tasks`} in the inbox. For each one, call assign_task with the best agent for it, or reject_task if it is not for this organization. Read the task with list_inbox first.`,
+      grantsLine(this.d.own, this.granted),
+      'A task on a repository that is not granted goes to the agent anyway, with the note that a person must grant the repository at the front desk first; the context curator records grants.',
       'Do not do the work yourself. When every task has been assigned or rejected, stop.',
     ].join('\n');
     state.event({ who, verb: 'started', text: `a planning pass · ${inbox.length} task${inbox.length === 1 ? '' : 's'} in the inbox` });
@@ -196,9 +242,26 @@ export class AgentLoop {
       state.event({ who: agent.name, verb: 'failed:', text: `no workspace (${why}) · move #${task.number} back to Assigned to retry`, task: task.number, level: 'error', needs: true });
       return;
     }
-    const workNote = `You work in ${ws.dir}, a checkout of the organization repository on the branch ${ws.branch}. Files you create or change there are committed and pushed by the harness when you finish, as a pull request on this task. You do not commit or push yourself.`;
+    const workNote = `You work in ${ws.dir}, a checkout of the organization repository on the branch ${ws.branch}. Files you create or change there are committed and pushed by the harness when you finish, as a pull request on this task. You do not commit or push yourself.${ws.note ? ` Note: ${ws.note}.` : ''}`;
     const watch = trackRun(state, { id: `task-${task.number}`, who: agent.name, task: task.number, title: task.title, cwd: ws.dir, ...(leaseUntil ? { leaseUntil } : {}) });
-    const tools = workerTools({ task, store, agent, org, node: holder, cwd: ws.dir, log, onFinal: (s) => (finalStatus = s), event: (e) => state.event({ who: agent.name, ...e }) });
+    const github = agent.harnessTools.includes('github');
+    const grants = this.granted;
+    let repoWs: Workspace | undefined;
+    const openRepo = async (repo: string): Promise<{ dir: string; branch: string; note?: string }> => {
+      if (repoWs) throw new Error(`already working in ${repoWs.repo}`);
+      repoWs = await openRepoWorkspace({ repo, reposRoot: this.d.reposRoot, workRoot: this.d.workRoot, orgName: org.config.name, task: task.number });
+      return { dir: repoWs.dir, branch: repoWs.branch, ...(repoWs.note ? { note: repoWs.note } : {}) };
+    };
+    const tools = workerTools({
+      task, store, agent, org, node: holder, cwd: ws.dir, log, onFinal: (s) => (finalStatus = s), event: (e) => state.event({ who: agent.name, ...e }),
+      own: this.d.own, grants, ...(github ? { openRepo } : {}),
+    });
+    const servers = github ? { github: githubTools({ own: this.d.own, grants, ...(this.d.login ? { login: this.d.login } : {}), account: agent.harnessTools.includes('github-account'), log }) } : undefined;
+    const notes = github
+      ? [
+          `${grantsLine(this.d.own, grants)} Read a granted repository with the github tools (read_repo_file, list_repo_tree, search_repo, list_pull_requests, read_pull_request). To change files in one, call work_in once with its owner/name and use your file tools in the folder it returns; the harness opens the pull request there. Nothing else on GitHub is reachable; a person grants a repository at the front desk.`,
+        ]
+      : [];
     const abort = new AbortController();
     const renew = setInterval(() => {
       void lease.renew(`task-${task.number}`, holder, minutes(org.config.lease.taskMinutes)).then((r) => {
@@ -221,19 +284,28 @@ export class AgentLoop {
     ].join('\n');
     let outcome;
     try {
-      outcome = await runAgent({ agent, org, prompt, cwd: ws.dir, node: holder, tools, auditFile, log, abort, label: `#${task.number}`, workNote, observer: watch });
+      outcome = await runAgent({
+        agent, org, prompt, cwd: ws.dir, node: holder, tools, auditFile, log, abort, label: `#${task.number}`, workNote, notes, observer: watch,
+        ...(servers ? { servers } : {}), roots: () => (repoWs ? [repoWs.dir] : []),
+      });
     } finally {
       clearInterval(renew);
     }
-    const closed = await closeWorkspace(org.dir, ws, { title: task.title, agent: agent.name, holder, pullRequest: true });
+    const closed = await closeWorkspace(ws, { title: task.title, agent: agent.name, holder, pullRequest: true });
     if (closed.error) state.warn(`workspace for #${task.number}: ${closed.error}`, agent.name);
-    const changes = closed.changed || closed.pushed
-      ? `\n\n**Changes:** ${closed.commit ? `commit ${closed.commit} ` : ''}on branch \`${ws.branch}\`${closed.prUrl ? `, pull request ${closed.prUrl}` : ''}${closed.error ? ` (${closed.error})` : ''}`
-      : closed.error ? `\n\n**Changes:** ${closed.error}` : '';
+    let changes = changesLine('Changes', ws, closed);
     if (closed.pushed) log(`pushed ${ws.branch}${closed.prUrl ? ` and opened ${closed.prUrl}` : ''}`);
+    let pushed = closed.pushed ? ` · pushed ${ws.branch}${closed.prUrl ? ` and opened ${prWords(closed.prUrl)}` : ''}` : '';
+    if (repoWs) {
+      const repoClosed = await closeWorkspace(repoWs, { title: task.title, agent: agent.name, holder, pullRequest: true, taskUrl: task.url });
+      if (repoClosed.error) state.warn(`workspace of ${repoWs.repo} for #${task.number}: ${repoClosed.error}`, agent.name);
+      changes += changesLine(`Changes in ${repoWs.repo}`, repoWs, repoClosed);
+      if (repoClosed.pushed) log(`pushed ${repoWs.branch} to ${repoWs.repo}${repoClosed.prUrl ? ` and opened ${repoClosed.prUrl}` : ''}`);
+      if (repoClosed.prUrl) this.prs.remember(task.number, repoClosed.prUrl);
+      if (repoClosed.pushed) pushed += ` · pushed ${repoWs.branch} to ${repoWs.repo}${repoClosed.prUrl ? ` and opened ${prWords(repoClosed.prUrl)}` : ''}`;
+    }
     const audit = path.relative(this.d.auditDir, auditFile);
     const tail = `${changes}\n\n<sub>${outcome.outcome}, ${outcome.turns} turns, ${(outcome.durationMs / 1000).toFixed(0)}s, ~$${outcome.costUsd.toFixed(2)}, ${outcome.toolCalls} tool calls (${outcome.denied} denied). Audit: ${audit} on ${holder}</sub>`;
-    const pushed = closed.pushed ? ` · pushed ${ws.branch}${closed.prUrl ? ` and opened ${prWords(closed.prUrl)}` : ''}` : '';
     let status: TaskStatus;
     if (finalStatus) {
       await store.comment(task, `**Run finished.**${tail}`);
@@ -279,6 +351,28 @@ export class AgentLoop {
     }
     this.seenLeases = now;
   }
+}
+
+/** The **Changes** line of the result comment for one checkout; empty when nothing happened. */
+function changesLine(label: string, ws: Workspace, closed: CloseResult): string {
+  if (closed.changed || closed.pushed) {
+    return `\n\n**${label}:** ${closed.commit ? `commit ${closed.commit} ` : ''}on branch \`${ws.branch}\`${ws.repo ? ` of ${ws.repo}` : ''}${closed.prUrl ? `, pull request ${closed.prUrl}` : ''}${closed.error ? ` (${closed.error})` : ''}`;
+  }
+  return closed.error ? `\n\n**${label}:** ${closed.error}` : '';
+}
+
+/** One sentence on what the agents may reach beyond their own repository. */
+function grantsLine(own: string, grants: Grant[]): string {
+  return grants.length
+    ? `Repositories granted to this organization beyond its own (${own}): ${grants.map((g) => g.repo).join(', ')}.`
+    : `No repository beyond the organization's own (${own}) is granted yet.`;
+}
+
+function sourcesView(own: string, grants: Grant[]): SourceView[] {
+  return [
+    { repo: own, url: `https://github.com/${own}`, own: true },
+    ...grants.map((g) => ({ repo: g.repo, url: `https://github.com/${g.repo}`, own: false, ...(g.granted ? { granted: g.granted } : {}), ...(g.task ? { task: g.task } : {}), ...(g.note ? { note: g.note } : {}) })),
+  ];
 }
 
 function numbers(out: { turns: number; durationMs: number; costUsd: number; toolCalls: number; denied: number }): string {

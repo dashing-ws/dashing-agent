@@ -13,7 +13,7 @@ export interface ToolWords {
   now: string;
 }
 
-const QUIET = new Set(['post_update', 'remove_file', 'propose_plan', 'finish', 'assign_task', 'reject_task', 'file_task', 'comment_task']);
+const QUIET = new Set(['post_update', 'remove_file', 'propose_plan', 'finish', 'assign_task', 'reject_task', 'file_task', 'comment_task', 'work_in']);
 
 function str(input: unknown, key: string): string {
   const v = input && typeof input === 'object' ? (input as Record<string, unknown>)[key] : undefined;
@@ -73,6 +73,38 @@ export function describeToolCall(name: string, input: unknown, cwd: string): Too
     default:
       break;
   }
+  const g = /^mcp__github__(.+)$/.exec(name);
+  if (g) {
+    const repo = str(input, 'repo');
+    switch (g[1]) {
+      case 'read_repo_file': {
+        const what = `${repo}:${str(input, 'path')}`;
+        return { verb: 'read', text: what, now: `reading ${what}` };
+      }
+      case 'list_repo_tree': {
+        const under = str(input, 'path');
+        const what = `${repo}${under ? `/${under}` : ''}`;
+        return { verb: 'listed', text: what, now: `listing ${what}` };
+      }
+      case 'search_repo': {
+        const what = `“${short(str(input, 'query'), 60)}” in ${repo}`;
+        return { verb: 'searched for', text: what, now: `searching for ${what}` };
+      }
+      case 'list_pull_requests':
+        return { verb: 'read', text: `the pull requests of ${repo}`, now: `reading the pull requests of ${repo}` };
+      case 'read_pull_request': {
+        const n = input && typeof input === 'object' ? (input as { number?: unknown }).number : undefined;
+        const what = `pull request ${repo}#${typeof n === 'number' ? n : '?'}`;
+        return { verb: 'read', text: what, now: `reading ${what}` };
+      }
+      case 'list_granted_repos':
+        return { verb: 'read', text: 'the granted repositories', now: 'reading the granted repositories' };
+      case 'list_account_repos':
+        return { verb: 'listed', text: 'the repositories of the account', now: 'listing the repositories of the account' };
+      default:
+        return { verb: 'called', text: g[1]!, now: `calling ${g[1]!}` };
+    }
+  }
   const m = /^mcp__ledger__(.+)$/.exec(name);
   if (m) {
     const t = m[1]!;
@@ -116,6 +148,6 @@ export function describeDenied(name: string, input: unknown, cwd: string): strin
     case 'LS':
       return `search ${file || 'outside its folders'}`;
     default:
-      return `use ${name.replace(/^mcp__ledger__/, '')}`;
+      return `use ${name.replace(/^mcp__\w+__/, '')}`;
   }
 }

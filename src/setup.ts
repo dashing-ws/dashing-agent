@@ -4,6 +4,7 @@ import YAML from 'yaml';
 import { gh, ghJson, parseRemote } from './github/gh.js';
 import { run } from './util/exec.js';
 import { loadOrganization, findConfigFile, CONFIG_FILE } from './org/contract.js';
+import { GRANTS_FILE, starterGrantsFile } from './runner/grants.js';
 import { loadLibrary, type LibraryAgent } from './org/library.js';
 import { TASK_STATUSES, STATUS_MEANING } from './github/task-store.js';
 
@@ -56,6 +57,7 @@ loops:
   agent_seconds: 60
   mechanical_seconds: 120
 `);
+  await put(GRANTS_FILE, starterGrantsFile());
   for (const a of agents) {
     await put(`agents/${a.name}.md`, a.text);
     if (a.avatarFile && a.avatar) {

@@ -6,6 +6,8 @@ import type { AgentSpec, Organization } from '../org/contract.js';
 import type { Task, TaskStatus, TaskStore } from '../github/task-store.js';
 import { renderPlanComment, validatePlan, type Plan } from '../mechanical/plan.js';
 import { checkAccess } from './access.js';
+import { refusal } from './github-tools.js';
+import type { Grant } from './grants.js';
 
 /** One line for the activity feed, from a tool that did something worth telling. */
 export type ToolEvent = (e: { verb: string; text: string; task?: number; said?: string; needs?: boolean }) => void;
@@ -38,6 +40,12 @@ export interface WorkerToolContext {
   onFinal: (status: TaskStatus) => void;
   log: (t: string) => void;
   event?: ToolEvent;
+  /** The organization's own repository, owner/name. */
+  own: string;
+  /** The granted repositories, as merged on the default branch. */
+  grants: Grant[];
+  /** Opens the checkout of a granted repository for this run; present when the agent has the github tools. */
+  openRepo?: (repo: string) => Promise<{ dir: string; branch: string; note?: string }>;
 }
 
 export function workerTools(ctx: WorkerToolContext): Tool[] {
@@ -77,7 +85,9 @@ export function workerTools(ctx: WorkerToolContext): Tool[] {
       summary: z.string().min(1).max(500),
       steps: z.array(z.object({
         handler: z.enum(['run_script', 'merge_pr', 'comment']),
-        args: z.record(z.string(), z.unknown()),
+        // A loose object, not z.record: the zod inside Agent SDK 0.3.284 and older cannot convert a record made
+        // by zod 4.6, and one tool it cannot convert hides every tool of the server from the agent.
+        args: z.looseObject({}),
       })).min(1).max(20),
     }, async ({ summary, steps }) => {
       const plan: Plan = { summary, steps, proposedBy: ctx.agent.name, at: new Date().toISOString() };
@@ -91,6 +101,8 @@ export function workerTools(ctx: WorkerToolContext): Tool[] {
       return text('Plan posted. The task is in Review and waits for a human.');
     }),
 
+    ...(ctx.openRepo ? [workIn(ctx)] : []),
+
     tool('finish', 'Finish your work on the task. "Review" when a human should look at your result; "Done" when nothing else is needed.', {
       summary: z.string().min(1).max(8000),
       status: z.enum(['Review', 'Done']),
@@ -103,6 +115,29 @@ export function workerTools(ctx: WorkerToolContext): Tool[] {
       return text(`The task is ${status}.`);
     }),
   ]);
+}
+
+/** `work_in`: the one checkout of a granted repository a run may open. */
+function workIn(ctx: WorkerToolContext): Tool {
+  let opened: string | undefined;
+  return tool('work_in', 'Open your checkout of a granted repository to change its files. Once per run, one repository. Returns the folder; use your file tools there. The harness commits, pushes a branch and opens a pull request in that repository that points at this task.', {
+    repo: z.string().min(3).max(140).describe('owner/name, from list_granted_repos'),
+  }, async ({ repo }) => {
+    if (opened) return text(`you already work in ${opened}; one repository per run. Finish this task and ask for another task for the next repository.`, true);
+    const no = refusal(ctx, repo);
+    if (no) return text(no, true);
+    try {
+      const ws = await ctx.openRepo!(repo);
+      opened = repo;
+      ctx.log(`works in ${repo} at ${ws.dir} on ${ws.branch}`);
+      ctx.event?.({ verb: 'opened', text: `${repo} on ${ws.branch}`, task: ctx.task.number });
+      return text(`Your checkout of ${repo} is ${ws.dir}, on the branch ${ws.branch}. Read and edit files there with your file tools, under the same folders you have at home. You do not commit or push; when you finish, the harness commits what changed, pushes the branch and opens a pull request in ${repo} that points at this task.${ws.note ? ` Note: ${ws.note}.` : ''}`);
+    } catch (e) {
+      const why = (e as Error).message.split('\n')[0];
+      ctx.log(`could not open ${repo}: ${why}`);
+      return text(`could not open ${repo}: ${why}`, true);
+    }
+  }) as Tool;
 }
 
 export interface DirectorToolContext {

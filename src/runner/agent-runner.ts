@@ -22,6 +22,12 @@ export interface RunSpec {
   node: string;
   /** In-process ledger tools (served as MCP server "ledger"). */
   tools: SdkMcpToolDefinition<any>[];
+  /** Other in-process tool servers by name: `github` for an agent whose spec lists it. */
+  servers?: Record<string, SdkMcpToolDefinition<any>[]>;
+  /** The run's other checkouts (a granted repository opened with work_in), read when a call is checked. */
+  roots?: () => string[];
+  /** More lines for the harness section of the prompt: the granted repositories, how to work in one. */
+  notes?: string[];
   auditFile: string;
   label: string;
   log: (text: string) => void;
@@ -55,7 +61,7 @@ export interface RunOutcome {
 
 const ALWAYS_DENIED = ['Bash(git push*)', 'Bash(sudo *)', 'Bash(rm -rf *)', 'Bash(gh auth*)'];
 
-export function harnessPrompt(agent: AgentSpec, org: Organization, ledgerNames: string[], workNote?: string): string {
+export function harnessPrompt(agent: AgentSpec, org: Organization, ledgerNames: string[], workNote?: string, notes: string[] = []): string {
   const roster = org.agents.map((a) => `- ${a.name}: ${a.role}${a.description ? ` (${a.description})` : ''}`).join('\n');
   return [
     agent.prompt.trim(),
@@ -66,6 +72,7 @@ export function harnessPrompt(agent: AgentSpec, org: Organization, ledgerNames: 
     `Your folders: ${describeAccess(agent.access)}. Paths outside them, outside your checkout, and .git are denied; give Glob and Grep a path inside your folders.`,
     'Tool calls outside your allowance are denied and logged; do not retry them. System reminders come from the harness. Finish by calling the ledger tool that closes your work.',
     ...(workNote ? [workNote] : []),
+    ...notes,
     '',
     'The organization:',
     roster,
@@ -75,7 +82,9 @@ export function harnessPrompt(agent: AgentSpec, org: Organization, ledgerNames: 
 export async function runAgent(spec: RunSpec): Promise<RunOutcome> {
   const { agent, org } = spec;
   const ledgerNames = spec.tools.map((t) => `mcp__ledger__${t.name}`);
-  const allowed = new Set<string>([...agent.tools, ...ledgerNames]);
+  const servers = spec.servers ?? {};
+  const serverNames = Object.entries(servers).flatMap(([server, tools]) => tools.map((t) => `mcp__${server}__${t.name}`));
+  const allowed = new Set<string>([...agent.tools, ...ledgerNames, ...serverNames]);
   const started = Date.now();
   let toolCalls = 0;
   let denied = 0;
@@ -91,7 +100,7 @@ export async function runAgent(spec: RunSpec): Promise<RunOutcome> {
   const preToolUse: HookCallback = async (input) => {
     if (input.hook_event_name !== 'PreToolUse') return {};
     const name = input.tool_name;
-    const verdict = allowed.has(name) ? checkAccess(name, input.tool_input, spec.cwd, agent.access) : { ok: false as const, reason: `${name} is not in your tools` };
+    const verdict = allowed.has(name) ? checkAccess(name, input.tool_input, spec.cwd, agent.access, spec.roots?.() ?? []) : { ok: false as const, reason: `${name} is not in your tools` };
     const ok = verdict.ok;
     toolCalls += 1;
     if (!ok) denied += 1;
@@ -131,12 +140,15 @@ export async function runAgent(spec: RunSpec): Promise<RunOutcome> {
   const options: Options = {
     cwd: spec.cwd,
     model: agent.model ?? org.config.model,
-    systemPrompt: harnessPrompt(agent, org, ledgerNames, spec.workNote),
+    systemPrompt: harnessPrompt(agent, org, ledgerNames, spec.workNote, spec.notes),
     tools: agent.tools,
-    allowedTools: [...agent.tools, ...ledgerNames],
+    allowedTools: [...allowed],
     disallowedTools: ALWAYS_DENIED,
     permissionMode: 'dontAsk',
-    mcpServers: { ledger: createSdkMcpServer({ name: 'ledger', version: VERSION, tools: spec.tools }) },
+    mcpServers: {
+      ledger: createSdkMcpServer({ name: 'ledger', version: VERSION, tools: spec.tools }),
+      ...Object.fromEntries(Object.entries(servers).map(([name, tools]) => [name, createSdkMcpServer({ name, version: VERSION, tools })])),
+    },
     maxTurns: org.config.budgets.maxTurns,
     maxBudgetUsd: org.config.budgets.maxBudgetUsd,
     settingSources: [],

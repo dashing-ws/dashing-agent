@@ -6,6 +6,8 @@ import { ghJson, ghLogin, ghScopes, parseRemote, type RepoRef } from '../github/
 import { ensureGhConfigDir } from './gh-home.js';
 import { loadOrganization, isKillSwitchOn, findConfigFile, type Organization, CONFIG_FILE, OLD_CONFIG_FILE } from '../org/contract.js';
 import { TASK_STATUSES } from '../github/task-store.js';
+import { GRANTS_FILE, readGrants, type Grant } from '../runner/grants.js';
+import { defaultBranch } from '../runner/workspace.js';
 import type { CheckStatus } from '../state.js';
 
 /**
@@ -47,6 +49,8 @@ export interface PreflightReport {
   orgProblems: string[];
   login?: string;
   project?: number;
+  /** The granted repositories from context/repos.md as merged on the default branch. */
+  grants?: Grant[];
   killSwitch: boolean;
   /** No folder was given, or it has no agentic-loop.yaml: the page offers to build an organization. */
   needsOrganization: boolean;
@@ -373,7 +377,38 @@ export async function runPreflight(opts: PreflightOptions): Promise<PreflightRep
     checks.push(skip('project', 'GitHub Project', 'needs the organization files, the remote and the project scope'));
   }
 
-  // 15. lease namespace readable
+  // 15. granted repositories: the file parses and gh can read each one
+  if (report.org && report.repo && accessOk && !opts.offline) {
+    const MAX_CHECKED = 25;
+    try {
+      await run('git', ['fetch', '-q', 'origin'], { cwd: folder, timeoutMs: 60_000 });
+      const base = await defaultBranch(folder);
+      const read = await readGrants(folder, base);
+      report.grants = read.grants;
+      const unreadable: string[] = [];
+      for (const g of read.grants.slice(0, MAX_CHECKED)) {
+        const r = await run('gh', ['api', `repos/${g.repo}`, '--jq', '.full_name'], { timeoutMs: 30_000 });
+        if (r.code !== 0) unreadable.push(g.repo);
+      }
+      const title = 'Granted repositories';
+      if (unreadable.length) {
+        checks.push(fail('sources', title, `gh cannot read ${unreadable.join(', ')} (named in ${GRANTS_FILE})`, {
+          description: `Ask the owner for access to ${unreadable.join(', ')}, or take the row out of ${GRANTS_FILE}`,
+        }));
+      } else if (read.problems.length) {
+        checks.push(warn('sources', title, `${GRANTS_FILE}: ${read.problems.join('; ')}`, { description: `Fix the rows in ${GRANTS_FILE} on the default branch` }));
+      } else {
+        const n = read.grants.length;
+        checks.push(pass('sources', title, n ? `${n} granted beyond the organization's own: ${read.grants.map((g) => g.repo).join(', ')}${n > MAX_CHECKED ? ` (the first ${MAX_CHECKED} checked)` : ''}` : `none beyond the organization's own; a person grants one at the front desk`));
+      }
+    } catch (e) {
+      checks.push(warn('sources', 'Granted repositories', `could not read ${GRANTS_FILE} from origin: ${(e as Error).message.split('\n')[0]}`));
+    }
+  } else {
+    checks.push(skip('sources', 'Granted repositories', opts.offline ? 'offline' : 'needs the organization files and the remote'));
+  }
+
+  // 16. lease namespace readable
   if (report.repo && repoOk && !opts.offline) {
     const ls = await run('git', ['ls-remote', 'origin', 'refs/agentic-loop/leases/*'], { cwd: folder, timeoutMs: 30_000 });
     const n = ls.stdout.trim() ? ls.stdout.trim().split('\n').length : 0;
